@@ -3,7 +3,9 @@ project_id = "wortwechsel"
 [auth]
 site_url = "https://ck1440p.github.io/wortwechsel/"
 additional_redirect_urls = ["https://ck1440p.github.io/wortwechsel/"]
+# Blocks new accounts only. Existing accounts keep signing in by email.
 enable_signup = false
 
 [auth.email]
-enable_signup = false
+# Must stay true: false switches email login off for existing accounts as well.
+enabled = true
