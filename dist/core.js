@@ -172,5 +172,71 @@
     if (!distractors.length) mode = 'written';
     return { ...item, term, expected, prompt, mode, options: shuffle([expected, ...distractors], random) };
   }
-  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion };
+  const DEMONSTRATIVE = /^(?:este|esta|esto|estos|estas|ese|esa|eso|esos|esas|aquel|aquella|aquello|aquellos|aquellas)$/i;
+  const CLOZE_LEVELS = { 1: { ratio: 0.35, hint: false }, 2: { ratio: 0.7, hint: true } };
+  function isDemonstrative(word) { return DEMONSTRATIVE.test(String(word)); }
+  // Odd entries of the split are words; even entries are spaces and punctuation.
+  function lineTokens(text) {
+    return String(text).split(/([\p{L}\p{N}]+(?:[-'’][\p{L}\p{N}]+)*)/u).map((value, i) => ({ text: value, word: i % 2 === 1 })).filter(t => t.text);
+  }
+  function lineWords(text) { return lineTokens(text).filter(t => t.word).map(t => t.text); }
+  // Demonstratives are test material, so they are blanked first at every level.
+  function clozeLine(text, level, random = Math.random) {
+    const tokens = lineTokens(text), config = CLOZE_LEVELS[level] || CLOZE_LEVELS[1];
+    const words = tokens.filter(t => t.word);
+    const target = Math.max(1, Math.round(words.length * config.ratio));
+    const demonstratives = words.filter(t => isDemonstrative(t.text));
+    const others = shuffle(words.filter(t => !isDemonstrative(t.text)), random);
+    const blanks = new Set([...demonstratives, ...others.slice(0, Math.max(0, target - demonstratives.length))]);
+    return tokens.map(t => ({ ...t, blank: blanks.has(t), hint: blanks.has(t) && config.hint ? t.text[0] : '' }));
+  }
+  // Word-level LCS: tells the learner which words are missing and which only lack an accent.
+  function compareLine(answer, expected, options = {}) {
+    const given = lineWords(answer), wanted = lineWords(expected);
+    const key = word => normalize(word, options.accents);
+    const table = Array.from({ length: wanted.length + 1 }, () => new Array(given.length + 1).fill(0));
+    for (let i = wanted.length - 1; i >= 0; i--) for (let j = given.length - 1; j >= 0; j--) {
+      table[i][j] = key(wanted[i]) === key(given[j]) ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+    const matched = new Map();
+    for (let i = 0, j = 0; i < wanted.length && j < given.length;) {
+      if (key(wanted[i]) === key(given[j])) matched.set(i++, given[j++]);
+      else if (table[i + 1][j] >= table[i][j + 1]) i++;
+      else j++;
+    }
+    let index = -1;
+    const parts = lineTokens(expected).map(t => t.word ? { ...t, ok: matched.has(++index) } : t);
+    const accentSlips = [...matched].filter(([i, word]) => normalize(word, true) !== normalize(wanted[i], true)).map(([i]) => wanted[i]);
+    return { correct: wanted.length > 0 && matched.size === wanted.length && given.length === wanted.length, parts, accentSlips };
+  }
+  // "Sprecher: Spanisch | Deutsch". Lines without a speaker (headings, names) are skipped and counted.
+  function parseDialog(text) {
+    const lines = []; let skipped = 0;
+    for (const raw of String(text).split(/\r?\n/)) {
+      if (!raw.trim()) continue;
+      const match = raw.match(/^\s*([^:|]{1,30}?)\s*:\s*(.+)$/);
+      if (!match) { skipped++; continue; }
+      const [es, ...rest] = match[2].split('|');
+      if (!es.trim()) { skipped++; continue; }
+      lines.push({ speaker: match[1].trim(), es: es.trim().slice(0, 500), de: rest.join('|').trim().slice(0, 500) });
+    }
+    if (lines.length < 2) throw new Error('Ein Dialog braucht mindestens 2 Zeilen im Format „A: Hola | Hallo“.');
+    if (lines.length > 100) throw new Error('Ein Dialog kann höchstens 100 Zeilen enthalten.');
+    return { lines, skipped };
+  }
+  function serializeDialog(dialog) { return dialog.lines.map(l => `${l.speaker}: ${l.es}${l.de ? ` | ${l.de}` : ''}`).join('\n'); }
+  function validateDialog(raw, preserveId = true) {
+    if (!raw || !Array.isArray(raw.lines)) return null;
+    const lines = raw.lines.filter(l => l && String(l.es ?? '').trim()).slice(0, 100).map(l => ({ speaker: String(l.speaker || 'A').slice(0, 30), es: String(l.es).trim().slice(0, 500), de: String(l.de ?? '').trim().slice(0, 500), task: String(l.task ?? '').trim().slice(0, 300) }));
+    if (lines.length < 2) return null;
+    const best = Math.min(4, Math.max(0, Math.trunc(Number(raw.progress?.best)) || 0));
+    return { id: preserveId && typeof raw.id === 'string' ? raw.id : uid(), title: String(raw.title || 'Mein Dialog').slice(0, 100), description: String(raw.description || '').slice(0, 250), seed: !!raw.seed && preserveId, lines, progress: { best, practiced: typeof raw.progress?.practiced === 'string' ? raw.progress.practiced.slice(0, 10) : '' } };
+  }
+  function dialogSpeakers(dialog) { return [...new Set(dialog.lines.map(l => l.speaker))]; }
+  // Lines stay in dialogue order: the order itself is part of what has to be learned.
+  function dialogQueue(dialog, role = 'all') {
+    const out = []; dialog.lines.forEach((l, i) => { if (role === 'all' || l.speaker === role) out.push(i); });
+    return out.length ? out : dialog.lines.map((_, i) => i);
+  }
+  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, dialogSpeakers, dialogQueue };
 });

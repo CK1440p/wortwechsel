@@ -125,3 +125,40 @@ test('multiple choice excludes answers with overlapping accepted synonyms', () =
   const question = C.buildQuestion(set, {termId:set.terms[0].id, reverse:false}, {mode:'mc'});
   assert.deepEqual(new Set(question.options), new Set(['stark, kräftig', 'klein']));
 });
+test('cloze always blanks demonstratives and thins out with the level', () => {
+  const line = 'Me gusta mucho esta chaqueta azul, pero aquella negra también es bonita.';
+  const easy = C.clozeLine(line, 1), hard = C.clozeLine(line, 2);
+  const blanks = tokens => tokens.filter(t => t.blank);
+  for (const tokens of [easy, hard]) for (const word of ['esta', 'aquella']) assert.ok(blanks(tokens).some(t => t.text === word));
+  assert.equal(blanks(easy).length, 4); assert.equal(blanks(hard).length, 8);
+  assert.ok(blanks(hard).every(t => t.hint === t.text[0])); assert.ok(blanks(easy).every(t => t.hint === ''));
+  assert.equal(easy.map(t => t.text).join(''), line);
+  assert.ok(!C.isDemonstrative('están') && !C.isDemonstrative('está'));
+});
+test('compareLine marks missing words and separates accent slips from errors', () => {
+  const expected = '¿Qué talla tiene?';
+  const slip = C.compareLine('que talla tiene', expected, { accents: false });
+  assert.equal(slip.correct, true); assert.deepEqual(slip.accentSlips, ['Qué']);
+  assert.equal(C.compareLine('que talla tiene', expected, { accents: true }).correct, false);
+  const missing = C.compareLine('qué tiene', expected, {});
+  assert.equal(missing.correct, false);
+  assert.deepEqual(missing.parts.filter(p => p.word && !p.ok).map(p => p.text), ['talla']);
+  assert.equal(C.compareLine('qué talla tiene usted', expected, {}).correct, false);
+  assert.equal(C.compareLine('tiene talla qué', expected, {}).correct, false);
+});
+test('parseDialog reads speakers and translations, skips headings and rejects too little', () => {
+  const { lines, skipped } = C.parseDialog('Adam, Felix\n\nA: ¡Hola! | Hallo!\nB: Son 15 euros: gracias.');
+  assert.equal(skipped, 1); assert.equal(lines.length, 2);
+  assert.deepEqual(lines[0], { speaker: 'A', es: '¡Hola!', de: 'Hallo!' });
+  assert.deepEqual(lines[1], { speaker: 'B', es: 'Son 15 euros: gracias.', de: '' });
+  assert.throws(() => C.parseDialog('nur eine Überschrift'), /mindestens 2/);
+  assert.deepEqual(C.parseDialog(C.serializeDialog({ lines })).lines, lines);
+});
+test('validateDialog clamps progress and rejects broken data', () => {
+  assert.equal(C.validateDialog({ lines: [{ es: 'a' }] }), null);
+  assert.equal(C.validateDialog(null), null);
+  const d = C.validateDialog({ id: 'x', lines: [{ es: 'a' }, { es: 'b', speaker: 'B' }], progress: { best: 99 } });
+  assert.equal(d.progress.best, 4); assert.equal(d.id, 'x');
+  assert.notEqual(C.validateDialog({ id: 'x', lines: d.lines }, false).id, 'x');
+  assert.deepEqual(C.dialogQueue(d, 'B'), [1]); assert.deepEqual(C.dialogQueue(d, 'Niemand'), [0, 1]);
+});

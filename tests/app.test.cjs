@@ -162,3 +162,102 @@ test('theme switch respects reduced motion while remaining functional', () => {
   assert.equal(animations, 0);
   assert.equal(a.document.documentElement.dataset.theme, 'light');
 });
+const WORD = /[\p{L}\p{N}]+(?:[-'’][\p{L}\p{N}]+)*/gu;
+// The active line is identified by its German cue; blanks are then filled from the stored sentence.
+function fillDialogLine(a, right = true) {
+  const line = a.data().dialogs[0].lines.find(l => a.$('.dlg-prompt').textContent.endsWith(l.de));
+  assert.ok(line, 'Prompt belongs to the dialogue');
+  const cloze = a.$('.dlg-cloze');
+  if (cloze) {
+    const words = line.es.match(WORD); let index = 0;
+    for (const node of [...cloze.childNodes]) {
+      if (node.nodeType === 1) { node.value = right ? words[index] : 'xxx'; index++; }
+      else index += (node.textContent.match(WORD) || []).length;
+    }
+  } else a.$('#dlg-line').value = right ? line.es : 'nada';
+  a.submit('#dlg-form');
+}
+test('old saves keep their data and gain the built-in dialogues', () => {
+  const store = new Map([['wortwechsel.v1', JSON.stringify({ sets: [{ id: 's', title: 'Alt', terms: [{ id: 't', front: 'a', back: 'b' }] }], settings: { mode: 'mc' }, history: { '2026-01-01': 3 } })]]);
+  const a = app(store), saved = a.data();
+  assert.equal(saved.sets[0].title, 'Alt'); assert.equal(saved.settings.mode, 'mc'); assert.equal(saved.history['2026-01-01'], 3);
+  assert.equal(saved.dialogs.length, 2); assert.equal(saved.dialogs[0].lines.length, 21); assert.equal(saved.dialogs[1].lines.length, 14);
+  assert.ok(saved.dialogs.every(d => d.lines.every(l => l.de && l.task)));
+});
+test('dialog stage: wrong lines return, passing unlocks the next stage and survives reload', () => {
+  const a = app();
+  a.click('[data-view="dialogs"]'); assert.equal(a.document.querySelectorAll('.dialog-card').length, 2);
+  a.click('.dialog-card');
+  assert.equal(a.document.querySelectorAll('.dlg-bubble').length, 21);
+  assert.match(a.$('.dlg-transcript mark').textContent, /estas/);
+  a.click('[data-action="dlg-start"][data-level="1"]');
+  fillDialogLine(a, false);
+  assert.ok(a.$('#dlg-feedback.incorrect'));
+  assert.match(a.$('.feedback-answer').textContent, /buenos días/);
+  a.submit('#dlg-form');
+  assert.equal(Object.values(a.data().history).reduce((n, v) => n + v, 0), 1, 'a second submit does not count twice');
+  a.click('[data-action="dlg-next"]');
+  let guard = 0;
+  while (a.$('#dlg-form') && guard++ < 60) { fillDialogLine(a); assert.ok(a.$('#dlg-feedback.correct')); a.click('[data-action="dlg-next"]'); }
+  assert.equal(guard, 21, 'the missed line came back once');
+  assert.match(a.text(), /Stufe 1 geschafft/); assert.match(a.text(), /20 \/ 21/);
+  assert.equal(a.data().dialogs[0].progress.best, 1);
+  assert.equal(app(a.store).data().dialogs[0].progress.best, 1);
+  assert.ok(a.$('[data-action="dlg-start"][data-level="2"]'));
+});
+test('too many first-try errors do not unlock the next stage', () => {
+  const a = app();
+  a.click('[data-view="dialogs"]'); a.click('.dialog-card'); a.click('[data-action="dlg-start"][data-level="3"]');
+  for (let i = 0; i < 21; i++) { fillDialogLine(a, false); a.click('[data-action="dlg-next"]'); }
+  let guard = 0;
+  while (a.$('#dlg-form') && guard++ < 30) { fillDialogLine(a); a.click('[data-action="dlg-next"]'); }
+  assert.equal(a.data().dialogs[0].progress.best, 0);
+  assert.ok(a.$('[data-action="dlg-start"][data-level="3"]')); assert.equal(a.$('[data-action="dlg-start"][data-level="4"]'), null);
+});
+test('whole-sentence stage: role filter and "War doch richtig" overrule', () => {
+  const a = app();
+  a.click('[data-view="dialogs"]'); a.click('.dialog-card');
+  a.click('[data-action="dlg-role"][data-role="Kunde"]');
+  a.click('[data-action="dlg-start"][data-level="3"]');
+  assert.match(a.$('.round-progress').textContent, /0 \/ 10/);
+  assert.match(a.$('.dlg-prompt small').textContent, /Kunde/);
+  a.$('#dlg-line').value = 'Hola, quiero una chaqueta.'; a.submit('#dlg-form');
+  assert.ok(a.$('#dlg-feedback.incorrect'));
+  a.click('[data-action="dlg-accept"]');
+  assert.match(a.$('.round-progress').textContent, /1 \/ 10/);
+  assert.match(a.$('.dlg-prompt small').textContent, /Kunde/);
+});
+test('test brief ticks exact sentences, lets the learner add others and scores them', () => {
+  const a = app();
+  a.click('[data-view="dialogs"]'); a.click('.dialog-card:last-child');
+  a.click('[data-action="dlg-start"][data-level="4"]');
+  assert.equal(a.document.querySelectorAll('.dlg-tasks li').length, 14);
+  a.submit('#dlg-essay-form'); assert.ok(a.$('#dlg-essay'), 'empty text stays on the page');
+  a.$('#dlg-essay').value = 'hola necesitas ayuda\nCuesta 120 euros.';
+  a.submit('#dlg-essay-form');
+  const boxes = [...a.document.querySelectorAll('.dlg-check input')];
+  assert.equal(boxes.length, 14);
+  assert.equal(boxes.filter(b => b.hasAttribute('checked')).length, 2);
+  boxes.forEach(b => { b.checked = true; });
+  a.submit('#dlg-check-form');
+  assert.match(a.text(), /14 von 14/); assert.equal(a.data().dialogs[1].progress.best, 4);
+});
+test('own dialogues: save, edit a copy of a built-in one, delete, backup restores them', () => {
+  const a = app();
+  a.click('[data-view="dialogs"]'); a.click('[data-action="dlg-new"]');
+  a.$('#dlg-title').value = 'Zapatos'; a.$('#import-text').value = 'Nur Titel';
+  a.submit('#dlg-editor'); assert.ok(a.$('#import-error').textContent.includes('mindestens 2'));
+  a.$('#import-text').value = 'Adam, Felix\nA: ¡Hola! | Hallo!\nB: Busco zapatos.'; a.submit('#dlg-editor');
+  assert.equal(a.data().dialogs.length, 3); assert.equal(a.data().dialogs[2].lines[0].de, 'Hallo!');
+  assert.match(a.$('#toast').textContent, /1 Zeile ohne Sprecher/);
+  a.click('[data-action="dlg-start"][data-level="3"]');
+  assert.match(a.$('.dlg-prompt').textContent, /Hallo!/);
+  a.click('[data-view="dialogs"]'); a.click('.dialog-card');
+  a.click('[data-action="dlg-edit"]'); a.submit('#dlg-editor');
+  assert.equal(a.data().dialogs.length, 4); assert.equal(a.data().dialogs[0].seed, true);
+  a.click('[data-action="dlg-delete"]'); a.click('#confirm-action');
+  assert.equal(a.data().dialogs.length, 3);
+  const backup = JSON.stringify({ version: 1, sets: [{ title: 'B', terms: [{ front: 'a', back: 'b' }] }], dialogs: a.data().dialogs });
+  const b = app(); b.click('[data-action="import"]'); b.$('#import-text').value = backup; b.submit('#import-form');
+  assert.equal(b.data().dialogs.length, 3); assert.equal(b.data().dialogs[2].title, 'Zapatos');
+});
