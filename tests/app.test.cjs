@@ -18,7 +18,7 @@ function app(store = new Map()) {
   const localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
   document.querySelectorAll('dialog').forEach(d => { d.showModal = () => d.setAttribute('open', ''); d.close = () => d.removeAttribute('open'); });
   const context = vm.createContext({ window, document, console, crypto: webcrypto, localStorage, FormData: MockFormData, requestAnimationFrame: fn => fn(), setTimeout: () => 1, clearTimeout: () => {}, Blob, URL, TextDecoder });
-  for (const script of ['core.js', 'seed.js', 'app.js']) {
+  for (const script of ['theme.js', 'core.js', 'seed.js', 'app.js', 'effects.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, script), 'utf8'), context, { filename: script });
     if (script === 'core.js') window.WWCore = context.WWCore;
   }
@@ -39,7 +39,7 @@ function answerCorrect(a) {
 
 test('dashboard loads all 95 terms, term search, flashcards and reload persistence', () => {
   const a = app();
-  assert.match(a.text(), /Mach aus Wörtern Wissen/); assert.equal(a.data().sets[0].terms.length, 95);
+  assert.match(a.text(), /Lernsets/); assert.equal(a.data().sets[0].terms.length, 95);
   a.click('[data-action="open-set"]');
   assert.equal(a.document.querySelectorAll('.term-row').length, 95);
   a.$('#term-search').value = 'Handtasche'; a.$('#term-search').dispatchEvent(new a.window.Event('input', { bubbles: true }));
@@ -74,7 +74,7 @@ test('wrong answer is shown, repeated later, and recovered before round completi
   a.click('[data-action="next"]'); assert.notEqual(a.$('.question-prompt h1').textContent, first);
   let attempts = 0;
   while (a.$('.question-card') && attempts++ < 100) { answerCorrect(a); a.click('[data-action="next"]'); }
-  assert.match(a.text(), /Extrarunde/); assert.ok(a.$('[data-action="repeat-errors"]'));
+  assert.match(a.text(), /Wiederholte Begriffe/); assert.ok(a.$('[data-action="repeat-errors"]'));
 });
 test('import preview can be edited, saved, and unsafe markup is text', () => {
   const a = app(); a.click('[data-action="import"]');
@@ -136,4 +136,28 @@ test('JSON backup skips null entries without crashing and retains valid pairs', 
   a.submit('#import-form');
   assert.equal(a.data().sets.at(-1).title, 'Recovered');
   assert.equal(a.data().sets.at(-1).terms.length, 1);
+});
+
+test('theme defaults to dark and toggles persist without changing learning data', () => {
+  const a = app();
+  assert.equal(a.document.documentElement.dataset.theme, 'dark');
+  assert.equal(a.$('#theme-toggle').getAttribute('aria-pressed'), 'true');
+  const before = a.store.get('wortwechsel.v1');
+  a.click('#theme-toggle');
+  assert.equal(a.document.documentElement.dataset.theme, 'light');
+  assert.equal(a.$('#theme-toggle').getAttribute('aria-pressed'), 'false');
+  assert.equal(a.store.get('wortwechsel.v1'), before);
+  const reloaded = app(a.store);
+  assert.equal(reloaded.document.documentElement.dataset.theme, 'light');
+  reloaded.click('#theme-toggle');
+  assert.equal(app(a.store).document.documentElement.dataset.theme, 'dark');
+});
+
+test('theme switch respects reduced motion while remaining functional', () => {
+  const a = app(); let animations = 0;
+  a.window.matchMedia = () => ({ matches: true });
+  a.$('#theme-toggle').animate = () => { animations++; };
+  a.click('#theme-toggle');
+  assert.equal(animations, 0);
+  assert.equal(a.document.documentElement.dataset.theme, 'light');
 });
