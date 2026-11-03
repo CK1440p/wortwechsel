@@ -71,13 +71,29 @@ test('adaptive stages: MC then writing twice, independent for both directions', 
 test('rounds select requested sizes, weak terms, and both random directions', () => {
   const set = { terms: C.parseImport(seed.pairs).terms };
   const directions = new Set();
-  for (let i = 0; i < 20; i++) { const r = C.createRound(set, { direction: 'random', roundSize: '10' }); assert.equal(r.queue.length, 10); assert.equal(new Set(r.queue.map(x => x.termId)).size, 10); r.queue.forEach(x => directions.add(x.reverse)); }
+  for (let i = 0; i < 20; i++) { const r = C.createRound(set, { direction: 'random', roundSize: '10' }); assert.equal(r.queue.length, 10); assert.equal(new Set(r.queue.map(x => x.termId)).size, 10); r.queue.forEach(x => { assert.equal(x.reverse, undefined); directions.add(C.buildQuestion(set, x, {direction:'random'}).reverse); }); }
   assert.equal(directions.size, 2);
   assert.ok(C.createRound(set, { direction: 'forward', roundSize: 'all' }).queue.every(q => !q.reverse));
   assert.equal(C.createRound(set, { direction: 'reverse', roundSize: 'all' }).total, 95);
   set.terms.forEach(t => { for (const rev of [false, true]) { C.recordAnswer(t, rev, 'mc', true); C.recordAnswer(t, rev, 'written', true); C.recordAnswer(t, rev, 'written', true); } });
   delete set.terms[0].progress;
   assert.ok(C.createRound(set, { direction: 'forward', roundSize: '5' }).queue.some(x => x.termId === set.terms[0].id));
+});
+
+test('each presentation rerolls direction, ignoring queued and previous directions', () => {
+  const set = {terms:C.parseImport('la ropa\tdie Kleidung\nel vestido\tdas Kleid').terms};
+  const item = {termId:set.terms[0].id, reverse:false};
+  const settings = {direction:'random', mode:'adaptive'};
+  const first = C.buildQuestion(set, item, settings, () => .1);
+  assert.equal(first.reverse, true); assert.equal(first.prompt, 'die Kleidung');
+  C.recordAnswer(first.term, first.reverse, first.mode, true);
+  const next = C.buildQuestion(set, first, settings, () => .9);
+  assert.equal(next.reverse, false); assert.equal(next.prompt, 'la ropa');
+  assert.equal(next.mode, 'mc'); // New direction keeps its own learning stage.
+  const again = C.buildQuestion(set, next, settings, () => .1);
+  assert.equal(again.reverse, true); assert.equal(again.mode, 'written');
+  assert.equal(C.buildQuestion(set, again, {direction:'forward'}, () => .1).reverse, false);
+  assert.equal(C.buildQuestion(set, item, {direction:'reverse'}, () => .9).reverse, true);
 });
 test('choices are unique and a single-pair set still supports writing', () => {
   const set = { terms: C.parseImport('la ropa\tdie Kleidung\nropa\tdie Kleidung\nel vestido\tdas Kleid\nla falda\tder Rock\nel jersey\tder Pullover').terms };

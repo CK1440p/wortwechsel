@@ -61,7 +61,8 @@ test('a full adaptive round uses MC then keyboard, ends, and persists progress',
     assert.equal(Object.values(a.data().history).reduce((n, v) => n + v, 0), oldCount);
     a.click('[data-action="next"]'); attempts++;
   }
-  assert.equal(mc, 10); assert.equal(written, 20); assert.equal(attempts, 30);
+  assert.ok(mc >= 10 && mc <= 20); assert.ok(written >= 20 && written <= 40);
+  assert.equal(attempts, mc + written);
   assert.match(a.text(), /Runde geschafft|RUNDE GESCHAFFT/);
   const terms = a.data().sets[0].terms;
   assert.equal(terms.filter(t => t.progress).length, 10);

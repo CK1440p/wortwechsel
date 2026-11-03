@@ -145,19 +145,20 @@
     const direction = settings.direction || 'random';
     const count = settings.roundSize === 'all' ? set.terms.length : Math.min(Number(settings.roundSize) || 10, set.terms.length);
     const candidates = shuffle(set.terms, random).map(term => {
-      let reverse = direction === 'reverse' || (direction === 'random' && random() < 0.5);
-      if (direction === 'random') {
-        const f = directionState(term, false), r = directionState(term, true);
-        // Both directions occur; weaker directions get a higher probability.
-        const forwardWeight = 4 - f.mc - f.written, reverseWeight = 4 - r.mc - r.written;
-        reverse = random() < reverseWeight / (forwardWeight + reverseWeight);
-      }
+      const reverse = direction === 'reverse';
       const p = directionState(term, reverse);
-      return { termId: term.id, reverse, priority: p.mc + p.written - Math.min(p.wrong, 3) * 0.15, jitter: random() };
+      const priority = direction === 'random' ? mastery(term) / 2 : p.mc + p.written;
+      return { termId: term.id, ...(direction === 'random' ? {} : { reverse }), priority: priority - Math.min(p.wrong, 3) * 0.15, jitter: random() };
     }).sort((a, b) => a.priority - b.priority || a.jitter - b.jitter).slice(0, count);
     return { queue: shuffle(candidates, random), total: count, completed: 0, attempts: 0, firstCorrect: 0, errors: [], retried: new Set(), answered: false, current: null };
   }
   function buildQuestion(set, item, settings, random = Math.random) {
+    // A new coin flip on EVERY presentation, including retries of the same term.
+    // The queued item and previous answers must not determine this direction.
+    const reverse = settings.direction === 'random' ? random() < 0.5
+      : settings.direction === 'reverse' ? true
+      : settings.direction === 'forward' ? false : !!item.reverse;
+    item = { ...item, reverse };
     const term = set.terms.find(t => t.id === item.termId);
     const p = directionState(term, item.reverse);
     let mode = settings.mode === 'written' ? 'written' : settings.mode === 'mc' ? 'mc' : p.mc >= 1 ? 'written' : 'mc';
