@@ -8,6 +8,7 @@ Privater, statischer Vokabeltrainer. Einstieg: `dist/index.html`.
 - Wahlweise ausschließlich Multiple Choice oder Schreibfragen, feste oder gemischte Richtung, Runden mit 5/10/20/allen Begriffen, optionale Akzent- und Artikelprüfung.
 - Freie Karteikarten, Suche, Lernset-Bearbeitung, Text-Export und JSON-Sicherung mit Fortschritt. JSON-Sicherungen werden als zusätzliche Lernsets importiert, vorhandene Sets bleiben bestehen.
 - Dialoge: 2 eingebaute Dialoge („En la tienda“ per usted und per tú) und eigene Dialoge im Format `Sprecher: Spanisch | Deutsch`. Lesen und Anhören, dann 4 Stufen: Lücken, viele Lücken mit Anfangsbuchstaben, ganze Sätze aus dem Kopf, Testangabe mit Selbstkontrolle. Stufe gilt ab 80 % beim ersten Versuch. Fortschritt liegt unter `dialogs` im selben Local-Storage-Eintrag und in der JSON-Sicherung.
+- Dialog-Abschnitte: Jeder Dialog lässt sich in Teilen von etwa 5 Zeilen üben, jeder Teil hat einen eigenen Stufen-Stand. Dialoge lassen sich direkt aus einem KI-Chat einfügen, mit Vorschau vor dem Speichern.
 - Sets und Fortschritt liegen nur in Local Storage dieses Browserprofils und dieser Domain. Keine geräteübergreifende Synchronisierung. Sicherung exportieren, bevor Browserdaten gelöscht werden.
 - Keine Laufzeit-Abhängigkeiten. Optionale Webfonts mit System-Fallback.
 

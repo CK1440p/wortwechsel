@@ -151,7 +151,7 @@ test('parseDialog reads speakers and translations, skips headings and rejects to
   assert.equal(skipped, 1); assert.equal(lines.length, 2);
   assert.deepEqual(lines[0], { speaker: 'A', es: '¡Hola!', de: 'Hallo!' });
   assert.deepEqual(lines[1], { speaker: 'B', es: 'Son 15 euros: gracias.', de: '' });
-  assert.throws(() => C.parseDialog('nur eine Überschrift'), /mindestens 2/);
+  assert.throws(() => C.parseDialog('nur eine Überschrift'), /Keine Dialogzeilen/);
   assert.deepEqual(C.parseDialog(C.serializeDialog({ lines })).lines, lines);
 });
 test('validateDialog clamps progress and rejects broken data', () => {
@@ -161,4 +161,37 @@ test('validateDialog clamps progress and rejects broken data', () => {
   assert.equal(d.progress.best, 4); assert.equal(d.id, 'x');
   assert.notEqual(C.validateDialog({ id: 'x', lines: d.lines }, false).id, 'x');
   assert.deepEqual(C.dialogQueue(d, 'B'), [1]); assert.deepEqual(C.dialogQueue(d, 'Niemand'), [0, 1]);
+});
+test('parseDialog reads AI output: markdown, numbering, translation below, text around the dialogue', () => {
+  const text = 'Hier ist der neue Dialog:\n\nAdam, Felix\n\n**A:** ¡Hola! ¿Puedo ayudarle?\n(Hallo! Kann ich Ihnen helfen?)\n\n2. **B:** Sí, busco una chaqueta. → Ja, ich suche eine Jacke.\n- A: ¿Qué talla tiene? | Welche Größe?\nB: La talla L.\n\nWas anders ist als vorher:\nAnrede: Die Verkäuferin sagt jetzt usted.\n\nViel Erfolg beim Lernen!';
+  const { lines, skippedLines } = C.parseDialog(text);
+  assert.deepEqual(lines.map(l => l.speaker), ['A', 'B', 'A', 'B']);
+  assert.equal(lines[0].es, '¡Hola! ¿Puedo ayudarle?'); assert.equal(lines[0].de, 'Hallo! Kann ich Ihnen helfen?');
+  assert.equal(lines[1].de, 'Ja, ich suche eine Jacke.'); assert.equal(lines[2].de, 'Welche Größe?'); assert.equal(lines[3].de, '');
+  assert.ok(skippedLines.some(s => s.startsWith('Anrede'))); assert.ok(skippedLines.includes('Viel Erfolg beim Lernen!'));
+});
+test('parseDialog handles dash dialogues and a labelled translation line', () => {
+  const dashes = C.parseDialog('– ¡Hola!\n– ¿Qué tal?\n– Muy bien.').lines;
+  assert.deepEqual(dashes.map(l => l.speaker), ['A', 'B', 'A']); assert.equal(dashes[1].es, '¿Qué tal?');
+  const labelled = C.parseDialog('Ana: Hola.\nDeutsch: Hallo.\nLuis: Adiós.').lines;
+  assert.equal(labelled.length, 2); assert.equal(labelled[0].de, 'Hallo.');
+  assert.equal(C.parseDialog('A: pegar (bien) | zusammenpassen\nB: pegar (bien)').lines[1].es, 'pegar (bien)');
+});
+test('dialogParts covers every line once and folds a short rest into the last part', () => {
+  const dialog = n => ({ lines: Array.from({ length: n }, () => ({})) });
+  assert.deepEqual(C.dialogParts(dialog(21)).map(p => p.key), ['0-4', '5-9', '10-14', '15-20']);
+  assert.deepEqual(C.dialogParts(dialog(14)).map(p => p.key), ['0-4', '5-9', '10-13']);
+  assert.equal(C.dialogParts(dialog(6)).length, 1); assert.equal(C.dialogParts(dialog(2)).length, 1);
+  const d = { lines: [{ speaker: 'A' }, { speaker: 'B' }, { speaker: 'A' }] };
+  assert.deepEqual(C.dialogQueue(d, 'all', { start: 1, end: 2 }), [1, 2]);
+  assert.deepEqual(C.dialogQueue(d, 'A', { start: 1, end: 2 }), [2]);
+  assert.deepEqual(C.dialogQueue(d, 'B', { start: 2, end: 2 }), [2], 'a part without the role still has lines');
+});
+test('part progress survives validation and merging', () => {
+  const lines = [{ es: 'a' }, { es: 'b' }];
+  const a = C.validateDialog({ id: 'x', lines, progress: { best: 1, parts: { '0-4': 2, '5-9': 9, bad: 3 } } });
+  assert.deepEqual(a.progress.parts, { '0-4': 2, '5-9': 4 });
+  const b = C.validateDialog({ id: 'x', lines, progress: { best: 2, parts: { '0-4': 1, '10-13': 3 } } });
+  const merged = C.mergeStates({ sets: [], dialogs: [a] }, { sets: [], dialogs: [b] });
+  assert.deepEqual(merged.dialogs[0].progress.parts, { '0-4': 2, '5-9': 4, '10-13': 3 }); assert.equal(merged.dialogs[0].progress.best, 2);
 });
