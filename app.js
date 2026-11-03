@@ -218,7 +218,7 @@
     { level: 4, name: 'Testangabe', text: 'Wie im Test: nur Anweisungen, du schreibst alles am Stück.' },
   ];
   const PASS_RATIO = 0.8, ACCENT_CHARS = 'á é í ó ú ü ñ ¿ ¡'.split(' ');
-  let dialogId = null, dlg = null, dlgRole = 'all', dlgLastInput = null, speechRun = 0;
+  let dialogId = null, dlg = null, dlgRole = 'all', dlgPart = 'all', dlgLastInput = null, speechRun = 0;
   const currentDialog = () => data.dialogs.find(d => d.id === dialogId);
   const canSpeak = () => typeof window.speechSynthesis?.speak === 'function';
   function stopSpeech() { speechRun++; if (canSpeak()) window.speechSynthesis.cancel(); }
@@ -244,23 +244,31 @@
   const stageLabel = best => best >= 4 ? 'Alle Stufen geschafft' : best ? `Stufe ${best} von 4 geschafft` : 'Noch nicht begonnen';
   function drawDialogs() {
     view = 'dialogs'; session = null; flash = null; dlg = null; renderShell('Dialoge');
-    $('#main').innerHTML = `<section class="page-intro"><div><h1>Dialoge<span class="blue-dot">.</span></h1><p>Erst lesen, dann mit immer weniger Hilfe selbst schreiben.</p></div><button class="button primary" data-action="dlg-new">${icon('plus')}Eigener Dialog</button></section><div class="dialog-grid">${data.dialogs.map(d => `<button class="dialog-card" data-action="dlg-open" data-dialog="${esc(d.id)}"><strong>${esc(d.title)}</strong><small>${esc(d.description || 'Eigener Dialog')}</small><small>${d.lines.length} Zeilen · ${stageLabel(d.progress.best)}</small><span class="mini-progress"><span style="width:${d.progress.best / 4 * 100}%"></span></span></button>`).join('')}</div>`;
+    $('#main').innerHTML = `<section class="page-intro"><div><h1>Dialoge<span class="blue-dot">.</span></h1><p>Erst lesen, dann mit immer weniger Hilfe selbst schreiben.</p></div><button class="button primary" data-action="dlg-new">${icon('plus')}Dialog einfügen</button></section><div class="dialog-grid">${data.dialogs.map(d => `<button class="dialog-card" data-action="dlg-open" data-dialog="${esc(d.id)}"><strong>${esc(d.title)}</strong><small>${esc(d.description || 'Eigener Dialog')}</small><small>${d.lines.length} Zeilen · ${stageLabel(d.progress.best)}</small><span class="mini-progress"><span style="width:${d.progress.best / 4 * 100}%"></span></span></button>`).join('')}</div>`;
   }
+  const selectedPart = d => C.dialogParts(d).find(p => p.key === dlgPart) || null;
+  const partStage = (d, part) => part ? Math.max(d.progress.best, Number(d.progress.parts?.[part.key]) || 0) : d.progress.best;
+  const partRange = part => `Zeilen ${part.start + 1} bis ${part.end + 1}`;
   function drawDialog() {
     const d = currentDialog(); if (!d) return drawDialogs();
     view = 'dialogs'; session = null; flash = null; dlg = null; renderShell(d.title);
-    const speakers = C.dialogSpeakers(d), nextLevel = Math.min(4, d.progress.best + 1);
+    const speakers = C.dialogSpeakers(d), parts = C.dialogParts(d);
     if (dlgRole !== 'all' && !speakers.includes(dlgRole)) dlgRole = 'all';
+    if (!parts.some(p => p.key === dlgPart)) dlgPart = 'all';
+    const part = selectedPart(d), stage = partStage(d, part), nextLevel = Math.min(4, stage + 1);
     const today = d.progress.practiced === localDate();
+    const advice = part ? `Du übst nur ${partRange(part)}. Wiederhole den Teil, bis er sitzt, dann kommt der nächste.` : d.progress.best >= 4 ? today ? 'Für heute reicht das. Morgen nochmal Stufe 3 oder 4, dann bleibt es hängen.' : 'Kurz wiederholen: Stufe 3 oder 4.' : 'Mach am besten weiter bei der markierten Stufe.';
+    const inPart = i => !part || (i >= part.start && i <= part.end);
     $('#main').innerHTML = `<button class="back-link" data-action="dlg-list">${icon('back')} Alle Dialoge</button><section class="set-page-heading"><div class="set-emoji big">${icon('chat')}</div><div><div class="eyebrow">${d.lines.length} ZEILEN · ${esc(stageLabel(d.progress.best).toUpperCase())}</div><h1>${esc(d.title)}</h1></div><button class="icon-button" data-action="dlg-edit" aria-label="Dialog bearbeiten" title="${d.seed ? 'Als eigene Kopie bearbeiten' : 'Dialog bearbeiten'}">${icon('edit')}</button></section>
-      <section class="dlg-section"><h2>Üben</h2><p>${d.progress.best >= 4 ? today ? 'Für heute reicht das. Morgen nochmal Stufe 3 oder 4, dann bleibt es hängen.' : 'Kurz wiederholen: Stufe 3 oder 4.' : 'Mach am besten weiter bei der markierten Stufe.'}</p><div class="dlg-roles" role="group" aria-label="Rolle wählen"><span>Du übst:</span>${['all', ...speakers].map(r => `<button class="dlg-role" data-action="dlg-role" data-role="${esc(r)}" aria-pressed="${dlgRole === r}">${r === 'all' ? 'Beide Rollen' : esc(r)}</button>`).join('')}</div><div class="dlg-stages">${DLG_STAGES.map(s => `<button class="dlg-stage ${s.level === nextLevel && d.progress.best < 4 ? 'next' : ''}" data-action="dlg-start" data-level="${s.level}"><span class="dlg-stage-top">STUFE ${s.level}${d.progress.best >= s.level ? icon('check') : ''}</span><strong>${s.name}</strong><small>${s.text}</small></button>`).join('')}</div></section>
-      <section class="dlg-section"><div class="section-heading"><div><h2>Lesen</h2><p>Markiert sind die Demonstrativpronomen.</p></div>${canSpeak() ? `<button class="button secondary" data-action="dlg-say-all">${icon('sound')}Alles anhören</button>` : ''}</div><div class="dlg-transcript">${d.lines.map((l, i) => `<div class="dlg-bubble ${speakerSide(d, l.speaker) ? 'right' : ''}"><div class="dlg-speaker">${esc(l.speaker)}${canSpeak() ? `<button class="dlg-say" data-action="dlg-say" data-line="${i}" aria-label="Zeile ${i + 1} anhören">${icon('sound')}</button>` : ''}</div><div class="dlg-es" lang="es">${markedLine(l.es)}</div>${l.de ? `<div class="dlg-de">${esc(l.de)}</div>` : ''}</div>`).join('')}</div><div class="set-danger-zone"><button class="text-button" data-action="dlg-reset">Fortschritt zurücksetzen</button>${d.seed ? '' : `<button class="text-button danger" data-action="dlg-delete">${icon('trash')}Dialog löschen</button>`}</div></section>`;
+      <section class="dlg-section"><h2>Üben</h2><p>${advice}</p>${parts.length > 1 ? `<div class="dlg-roles" role="group" aria-label="Abschnitt wählen"><span>Abschnitt:</span><button class="dlg-role" data-action="dlg-part" data-part="all" aria-pressed="${!part}">Ganzer Dialog</button>${parts.map(p => { const done = partStage(d, p); return `<button class="dlg-role" data-action="dlg-part" data-part="${p.key}" aria-pressed="${part?.key === p.key}" title="${partRange(p)}">Teil ${p.number}${done ? ` (${done}/4)` : ''}</button>`; }).join('')}</div>` : ''}<div class="dlg-roles" role="group" aria-label="Rolle wählen"><span>Du übst:</span>${['all', ...speakers].map(r => `<button class="dlg-role" data-action="dlg-role" data-role="${esc(r)}" aria-pressed="${dlgRole === r}">${r === 'all' ? 'Beide Rollen' : esc(r)}</button>`).join('')}</div><div class="dlg-stages">${DLG_STAGES.map(s => `<button class="dlg-stage ${s.level === nextLevel && stage < 4 ? 'next' : ''}" data-action="dlg-start" data-level="${s.level}"><span class="dlg-stage-top">STUFE ${s.level}${stage >= s.level ? icon('check') : ''}</span><strong>${s.name}</strong><small>${s.text}</small></button>`).join('')}</div></section>
+      <section class="dlg-section"><div class="section-heading"><div><h2>Lesen</h2><p>Markiert sind die Demonstrativpronomen.</p></div>${canSpeak() ? `<button class="button secondary" data-action="dlg-say-all">${icon('sound')}${part ? 'Teil anhören' : 'Alles anhören'}</button>` : ''}</div><div class="dlg-transcript">${d.lines.map((l, i) => `<div class="dlg-bubble ${speakerSide(d, l.speaker) ? 'right' : ''} ${inPart(i) ? '' : 'is-out'}"><div class="dlg-speaker">${esc(l.speaker)}${canSpeak() ? `<button class="dlg-say" data-action="dlg-say" data-line="${i}" aria-label="Zeile ${i + 1} anhören">${icon('sound')}</button>` : ''}</div><div class="dlg-es" lang="es">${markedLine(l.es)}</div>${l.de ? `<div class="dlg-de">${esc(l.de)}</div>` : ''}</div>`).join('')}</div><div class="set-danger-zone"><button class="text-button" data-action="dlg-reset">Fortschritt zurücksetzen</button>${d.seed ? '' : `<button class="text-button danger" data-action="dlg-delete">${icon('trash')}Dialog löschen</button>`}</div></section>`;
   }
   function startDialog(level) {
     const d = currentDialog(); if (!d) return drawDialogs();
-    if (level === 4) { dlg = { level, answered: false }; return drawDialogBrief(); }
-    const queue = C.dialogQueue(d, dlgRole);
-    dlg = { level, queue, total: queue.length, done: 0, firstTry: 0, missed: new Set(), current: null, answered: false, cloze: null, attempts: 0 };
+    const part = selectedPart(d);
+    if (level === 4) { dlg = { level, answered: false, part }; return drawDialogBrief(); }
+    const queue = C.dialogQueue(d, dlgRole, part);
+    dlg = { level, part, queue, total: queue.length, done: 0, firstTry: 0, missed: new Set(), current: null, answered: false, cloze: null, attempts: 0 };
     nextDialogLine();
   }
   function nextDialogLine() {
@@ -275,7 +283,7 @@
     const field = dlg.level < 3
       ? `<div class="dlg-cloze" lang="es">${dlg.cloze.map((t, i) => t.blank ? `<input class="dlg-blank" name="word-${i}" data-token="${i}" style="width:${Math.max(3, t.text.length) + 2}ch" placeholder="${esc(t.hint ? t.hint + '…' : '')}" aria-label="Fehlendes Wort" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">` : esc(t.text)).join('')}</div>`
       : `<label class="answer-label" for="dlg-line">Dein Satz auf Spanisch</label><input id="dlg-line" class="dlg-line-input" lang="es" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">`;
-    $('#main').innerHTML = `<section class="learning-shell"><div class="learning-top"><button class="back-link" data-action="dlg-exit">${icon('back')}Dialog</button><span class="learning-set-name">Stufe ${dlg.level} · ${stage.name}</span><span></span></div><div class="round-progress"><div><strong>${esc(d.title)}</strong><span>${dlg.done} / ${dlg.total} Zeilen geschafft</span></div><div class="mini-progress"><span style="width:${Math.round(dlg.done / dlg.total * 100)}%"></span></div></div><div class="dlg-card">${prev ? `<div class="dlg-bubble dlg-context"><div class="dlg-speaker">${esc(prev.speaker)}</div><div class="dlg-es" lang="es">${esc(prev.es)}</div></div>` : ''}<div class="dlg-prompt"><small>${esc(line.speaker)} sagt</small>${esc(cue)}</div><form id="dlg-form">${field}${accentKeys()}<div class="write-actions"><button type="button" class="text-button" data-action="dlg-skip">Weiß ich noch nicht</button><button type="submit" class="button primary">Prüfen ${icon('arrow')}</button></div></form><div id="dlg-feedback" class="answer-feedback" role="status" aria-live="polite"></div></div><div class="shortcut-hint"><kbd>Tab</kbd> Nächste Lücke <span>·</span> <kbd>Enter</kbd> Prüfen / weiter</div></section>`;
+    $('#main').innerHTML = `<section class="learning-shell"><div class="learning-top"><button class="back-link" data-action="dlg-exit">${icon('back')}Dialog</button><span class="learning-set-name">Stufe ${dlg.level} · ${stage.name}${dlg.part ? ` · Teil ${dlg.part.number}` : ''}</span><span></span></div><div class="round-progress"><div><strong>${esc(d.title)}</strong><span>${dlg.done} / ${dlg.total} Zeilen geschafft</span></div><div class="mini-progress"><span style="width:${Math.round(dlg.done / dlg.total * 100)}%"></span></div></div><div class="dlg-card">${prev ? `<div class="dlg-bubble dlg-context"><div class="dlg-speaker">${esc(prev.speaker)}</div><div class="dlg-es" lang="es">${esc(prev.es)}</div></div>` : ''}<div class="dlg-prompt"><small>${esc(line.speaker)} sagt</small>${esc(cue)}</div><form id="dlg-form">${field}${accentKeys()}<div class="write-actions"><button type="button" class="text-button" data-action="dlg-skip">Weiß ich noch nicht</button><button type="submit" class="button primary">Prüfen ${icon('arrow')}</button></div></form><div id="dlg-feedback" class="answer-feedback" role="status" aria-live="polite"></div></div><div class="shortcut-hint"><kbd>Tab</kbd> Nächste Lücke <span>·</span> <kbd>Enter</kbd> Prüfen / weiter</div></section>`;
     $('#dlg-form').addEventListener('submit', e => { e.preventDefault(); if (!dlg.answered) gradeDialogLine(); });
     document.querySelector('.dlg-card').addEventListener('focusin', e => { if (e.target.matches('input,textarea')) dlgLastInput = e.target; });
     requestAnimationFrame(() => document.querySelector('.dlg-blank, #dlg-line')?.focus({ preventScroll: true }));
@@ -316,55 +324,95 @@
   function finishDialogStage(passed) {
     const d = currentDialog();
     d.progress.practiced = localDate();
-    if (passed) d.progress.best = Math.max(d.progress.best, dlg.level);
+    if (passed && dlg.part) {
+      d.progress.parts = { ...d.progress.parts, [dlg.part.key]: Math.max(Number(d.progress.parts?.[dlg.part.key]) || 0, dlg.level) };
+      // Passing every part at a stage counts as passing the stage for the whole dialogue.
+      if (C.dialogParts(d).every(p => (Number(d.progress.parts[p.key]) || 0) >= dlg.level)) d.progress.best = Math.max(d.progress.best, dlg.level);
+    } else if (passed) d.progress.best = Math.max(d.progress.best, dlg.level);
     save();
   }
+  function dialogResultActions(d, level, passed, part) {
+    const start = (label, targetLevel, cls, targetPart = '') => `<button class="button ${cls}" data-action="dlg-start" data-level="${targetLevel}"${targetPart ? ` data-part="${targetPart}"` : ''}>${label}</button>`;
+    const repeat = part ? 'Teil wiederholen' : level === 4 ? 'Nochmal schreiben' : `Stufe ${level} wiederholen`;
+    const buttons = [];
+    if (passed && level < 4) buttons.push(start(`Weiter zu Stufe ${level + 1} ${icon('arrow')}`, level + 1, 'primary'), start(repeat, level, 'secondary'));
+    else if (!passed && level === 4) buttons.push(start(`Zu Stufe 3 ${icon('arrow')}`, 3, 'primary'), start(repeat, level, 'secondary'));
+    else buttons.push(start(`${repeat} ${icon('arrow')}`, level, 'primary'));
+    if (part) {
+      const following = C.dialogParts(d)[part.number];
+      buttons.push(following ? start('Nächster Teil', level, 'secondary', following.key) : start('Ganzer Dialog', level, 'secondary', 'all'));
+    }
+    return `${buttons.join('')}<button class="text-button" data-action="dlg-open" data-dialog="${esc(d.id)}">Zurück zum Dialog</button>`;
+  }
   function drawDialogResult() {
-    const d = currentDialog(), ratio = dlg.firstTry / dlg.total, passed = ratio >= PASS_RATIO, level = dlg.level;
+    const d = currentDialog(), ratio = dlg.firstTry / dlg.total, passed = ratio >= PASS_RATIO, level = dlg.level, part = dlg.part;
     finishDialogStage(passed);
     const missed = [...dlg.missed].sort((a, b) => a - b);
-    const goOn = passed && level < 4;
-    $('#main').innerHTML = `<section class="result-page"><div class="result-icon">${icon('check')}<span>✦</span></div><h1>Stufe ${level} ${passed ? 'geschafft' : 'durchgespielt'}<span class="blue-dot">.</span></h1><p>${passed ? 'Bereit für weniger Hilfe.' : 'Noch unter 80 % beim ersten Versuch: Wiederhole diese Stufe, bevor du weitergehst.'}</p><div class="result-stats"><div><strong>${dlg.firstTry} / ${dlg.total}</strong><span>beim ersten Versuch</span></div><div><strong>${dlg.attempts}</strong><span>Antworten gegeben</span></div><div><strong>${missed.length}</strong><span>${missed.length === 1 ? 'Zeile wiederholt' : 'Zeilen wiederholt'}</span></div></div>${missed.length ? `<div class="result-review"><h3>Wiederholte Zeilen</h3>${missed.map(i => `<div><span lang="es">${esc(d.lines[i].es)}</span></div>`).join('')}</div>` : '<div class="perfect-note">Keine Fehler.</div>'}<div class="result-actions">${goOn ? `<button class="button primary" data-action="dlg-start" data-level="${level + 1}">Weiter zu Stufe ${level + 1} ${icon('arrow')}</button><button class="button secondary" data-action="dlg-start" data-level="${level}">Nochmal</button>` : `<button class="button primary" data-action="dlg-start" data-level="${level}">Stufe ${level} wiederholen ${icon('arrow')}</button>`}<button class="text-button" data-action="dlg-open" data-dialog="${esc(d.id)}">Zurück zum Dialog</button></div></section>`;
+    const note = passed ? part ? `Teil ${part.number} sitzt in dieser Stufe.` : 'Bereit für weniger Hilfe.' : 'Noch unter 80 % beim ersten Versuch: Wiederhole diese Stufe, bevor du weitergehst.';
+    $('#main').innerHTML = `<section class="result-page"><div class="result-icon">${icon('check')}<span>✦</span></div><h1>Stufe ${level} ${passed ? 'geschafft' : 'durchgespielt'}<span class="blue-dot">.</span></h1><p>${note}</p><div class="result-stats"><div><strong>${dlg.firstTry} / ${dlg.total}</strong><span>beim ersten Versuch</span></div><div><strong>${dlg.attempts}</strong><span>Antworten gegeben</span></div><div><strong>${missed.length}</strong><span>${missed.length === 1 ? 'Zeile wiederholt' : 'Zeilen wiederholt'}</span></div></div>${missed.length ? `<div class="result-review"><h3>Wiederholte Zeilen</h3>${missed.map(i => `<div><span lang="es">${esc(d.lines[i].es)}</span></div>`).join('')}</div>` : '<div class="perfect-note">Keine Fehler.</div>'}<div class="result-actions">${dialogResultActions(d, level, passed, part)}</div></section>`;
     dlg = null;
   }
   function drawDialogBrief() {
-    const d = currentDialog();
-    $('#main').innerHTML = `<section class="learning-shell"><div class="learning-top"><button class="back-link" data-action="dlg-exit">${icon('back')}Dialog</button><span class="learning-set-name">Stufe 4 · Testangabe</span><span></span></div><div class="dlg-card"><h2>Schreib den Dialog auf Spanisch</h2><p class="dlg-accent-note">Jede Anweisung braucht mindestens einen Satz. Ohne Nachschauen, danach vergleichst du selbst.</p><ol class="dlg-tasks">${d.lines.map(l => `<li><b>${esc(l.speaker)}:</b> ${esc(l.task || l.de || C.lineWords(l.es).map(w => w[0] + '…').join(' '))}</li>`).join('')}</ol><form id="dlg-essay-form"><textarea id="dlg-essay" class="dlg-essay" lang="es" aria-label="Dein Dialog" placeholder="¡Hola! …" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>${accentKeys()}<div class="write-actions"><span></span><button type="submit" class="button primary">Vergleichen ${icon('arrow')}</button></div></form></div></section>`;
+    const d = currentDialog(), lines = C.dialogQueue(d, 'all', dlg.part).map(i => d.lines[i]);
+    $('#main').innerHTML = `<section class="learning-shell"><div class="learning-top"><button class="back-link" data-action="dlg-exit">${icon('back')}Dialog</button><span class="learning-set-name">Stufe 4 · Testangabe${dlg.part ? ` · Teil ${dlg.part.number}` : ''}</span><span></span></div><div class="dlg-card"><h2>Schreib ${dlg.part ? 'diesen Teil' : 'den Dialog'} auf Spanisch</h2><p class="dlg-accent-note">Jede Anweisung braucht mindestens einen Satz. Ohne Nachschauen, danach vergleichst du selbst.</p><ol class="dlg-tasks">${lines.map(l => `<li><b>${esc(l.speaker)}:</b> ${esc(l.task || l.de || C.lineWords(l.es).map(w => w[0] + '…').join(' '))}</li>`).join('')}</ol><form id="dlg-essay-form"><textarea id="dlg-essay" class="dlg-essay" lang="es" aria-label="Dein Dialog" placeholder="¡Hola! …" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>${accentKeys()}<div class="write-actions"><span></span><button type="submit" class="button primary">Vergleichen ${icon('arrow')}</button></div></form></div></section>`;
     $('#dlg-essay-form').addEventListener('submit', e => { e.preventDefault(); const text = $('#dlg-essay').value; if (text.trim()) drawDialogCheck(text); else $('#dlg-essay').focus(); });
     const essay = $('#dlg-essay'); essay.addEventListener('focus', () => { dlgLastInput = essay; }); dlgLastInput = essay;
     requestAnimationFrame(() => essay.focus({ preventScroll: true }));
   }
   function drawDialogCheck(text) {
-    const d = currentDialog(), have = ` ${C.lineWords(text).map(w => C.normalize(w)).join(' ')} `;
+    const d = currentDialog(), have = ` ${C.lineWords(text).map(w => C.normalize(w)).join(' ')} `, lines = C.dialogQueue(d, 'all', dlg.part).map(i => d.lines[i]);
     const today = localDate(); data.history[today] = (Number(data.history[today]) || 0) + 1; save();
     // Exact matches are ticked as a starting point. Free writing can only be judged by the learner.
     const found = l => have.includes(` ${C.lineWords(l.es).map(w => C.normalize(w)).join(' ')} `);
-    $('#main').innerHTML = `<section class="learning-shell"><div class="learning-top"><button class="back-link" data-action="dlg-exit">${icon('back')}Dialog</button><span class="learning-set-name">Stufe 4 · Vergleichen</span><span></span></div><div class="dlg-card"><h2>Hast du jeden Schritt drin?</h2><p class="dlg-accent-note">Wörtlich gleiche Sätze sind schon angehakt. Hak auch an, was anders formuliert, aber richtig ist.</p><div class="dlg-mine" lang="es">${esc(text)}</div><form id="dlg-check-form">${d.lines.map((l, i) => `<label class="dlg-check"><input type="checkbox" name="line-${i}" ${found(l) ? 'checked' : ''}><span><span class="dlg-es" lang="es">${esc(l.es)}</span><span class="dlg-de" style="display:block">${esc(l.speaker)}${l.task || l.de ? ` · ${esc(l.task || l.de)}` : ''}</span></span></label>`).join('')}<div class="dlg-actions"><button type="submit" class="button primary">Ergebnis speichern ${icon('check')}</button></div></form></div></section>`;
+    $('#main').innerHTML = `<section class="learning-shell"><div class="learning-top"><button class="back-link" data-action="dlg-exit">${icon('back')}Dialog</button><span class="learning-set-name">Stufe 4 · Vergleichen</span><span></span></div><div class="dlg-card"><h2>Hast du jeden Schritt drin?</h2><p class="dlg-accent-note">Wörtlich gleiche Sätze sind schon angehakt. Hak auch an, was anders formuliert, aber richtig ist.</p><div class="dlg-mine" lang="es">${esc(text)}</div><form id="dlg-check-form">${lines.map((l, i) => `<label class="dlg-check"><input type="checkbox" name="line-${i}" ${found(l) ? 'checked' : ''}><span><span class="dlg-es" lang="es">${esc(l.es)}</span><span class="dlg-de" style="display:block">${esc(l.speaker)}${l.task || l.de ? ` · ${esc(l.task || l.de)}` : ''}</span></span></label>`).join('')}<div class="dlg-actions"><button type="submit" class="button primary">Ergebnis speichern ${icon('check')}</button></div></form></div></section>`;
     $('#dlg-check-form').addEventListener('submit', e => {
       e.preventDefault();
-      const boxes = [...document.querySelectorAll('.dlg-check input')], ticked = boxes.filter(b => b.checked).length, passed = ticked / boxes.length >= PASS_RATIO;
+      const boxes = [...document.querySelectorAll('.dlg-check input')], ticked = boxes.filter(b => b.checked).length, passed = ticked / boxes.length >= PASS_RATIO, part = dlg.part;
       finishDialogStage(passed);
-      $('#main').innerHTML = `<section class="result-page"><div class="result-icon">${icon('check')}<span>✦</span></div><h1>${ticked} von ${boxes.length} Schritten<span class="blue-dot">.</span></h1><p>${passed ? 'Das reicht für den Test. Bau zur Übung etwas um: andere Kleidung, anderes Problem.' : 'Unter 80 %: Übe die fehlenden Zeilen in Stufe 3 und schreib ihn dann nochmal.'}</p><div class="result-actions"><button class="button primary" data-action="dlg-start" data-level="${passed ? 4 : 3}">${passed ? 'Nochmal schreiben' : 'Zu Stufe 3'} ${icon('arrow')}</button><button class="text-button" data-action="dlg-open" data-dialog="${esc(d.id)}">Zurück zum Dialog</button></div></section>`;
+      $('#main').innerHTML = `<section class="result-page"><div class="result-icon">${icon('check')}<span>✦</span></div><h1>${ticked} von ${boxes.length} Schritten<span class="blue-dot">.</span></h1><p>${passed ? part ? `Teil ${part.number} kannst du frei schreiben.` : 'Das reicht für den Test. Bau zur Übung etwas um: andere Kleidung, anderes Problem.' : 'Unter 80 %: Übe die fehlenden Zeilen in Stufe 3 und schreib ihn dann nochmal.'}</p><div class="result-actions">${dialogResultActions(d, 4, passed, part)}</div></section>`;
       dlg = null;
     });
   }
+  const DIALOG_PROMPT = 'Schreib einen Dialog auf Spanisch zum Thema [Thema hier eintragen]. Gib nur den Dialog aus, ohne Überschrift und ohne Erklärung. Schreib jede Zeile genau so:\nSprecher: spanischer Satz | deutsche Übersetzung\n\nBeispiel:\nA: ¡Hola! ¿Qué tal? | Hallo! Wie geht es dir?\nB: Muy bien, gracias. | Sehr gut, danke.';
+  let dlgEditorSource = null, dlgDraft = null, dlgSkipped = [];
   function openDialogEditor(source = null) {
+    dlgEditorSource = source; dlgDraft = null; dlgSkipped = [];
     const dialog = $('#import-dialog'), asCopy = !!source?.seed;
-    dialog.innerHTML = `<div class="dialog-header"><div><h2 id="import-heading">${source && !asCopy ? 'Dialog bearbeiten' : asCopy ? 'Eigene Kopie bearbeiten' : 'Eigener Dialog'}</h2></div><button class="icon-button" data-close="import-dialog" aria-label="Schließen">${icon('close')}</button></div><form id="dlg-editor"><div class="form-grid"><label class="full">Titel<input id="dlg-title" value="${esc(source ? source.title + (asCopy ? ' (Kopie)' : '') : '')}" maxlength="100" placeholder="z. B. En la zapatería" required></label></div><label class="textarea-label" for="import-text">Dein Dialog</label><textarea id="import-text" placeholder="A: ¡Hola! ¿Necesitas ayuda? | Hallo! Brauchst du Hilfe?&#10;B: Sí, busco unos zapatos. | Ja, ich suche Schuhe."></textarea><p class="dlg-format">Eine Zeile pro Satz: <strong>Sprecher: Spanisch | Deutsch</strong>. Das Deutsche ist optional, ohne es zeigt „Aus dem Kopf“ nur Anfangsbuchstaben. Zeilen ohne Sprecher werden übersprungen.</p><div id="import-error" class="form-error" role="alert" hidden></div><div class="dialog-footer"><span class="import-privacy">${icon('lock')}Deine Inhalte bleiben in deinem Browser.</span><button class="button primary" type="submit">Dialog speichern ${icon('check')}</button></div></form>`;
+    dialog.innerHTML = `<div class="dialog-header"><div><h2 id="import-heading">${source && !asCopy ? 'Dialog bearbeiten' : asCopy ? 'Eigene Kopie bearbeiten' : 'Dialog einfügen'}</h2></div><button class="icon-button" data-close="import-dialog" aria-label="Schließen">${icon('close')}</button></div><form id="dlg-editor"><div class="form-grid"><label class="full">Titel<input id="dlg-title" value="${esc(source ? source.title + (asCopy ? ' (Kopie)' : '') : '')}" maxlength="100" placeholder="z. B. En la zapatería"></label></div><div id="dlg-editor-source"><label class="textarea-label" for="import-text">Dein Dialog</label><textarea id="import-text" placeholder="Füg hier den ganzen Text ein, auch direkt aus einem KI-Chat.&#10;&#10;A: ¡Hola! ¿Necesitas ayuda? | Hallo! Brauchst du Hilfe?&#10;B: Sí, busco unos zapatos. | Ja, ich suche Schuhe."></textarea><p class="dlg-format">Überschriften und Erklärungen darum herum werden herausgefiltert. Ohne deutsche Übersetzung zeigt „Aus dem Kopf“ nur Anfangsbuchstaben.</p><details class="dlg-prompt-help"><summary>Dialog von einer KI schreiben lassen</summary><p class="dlg-format">Kopiere diesen Text in Claude oder ChatGPT, trag dein Thema ein und füg die Antwort oben ein.</p><pre class="dlg-prompt-text">${esc(DIALOG_PROMPT)}</pre><button type="button" class="button secondary" data-action="dlg-copy-prompt">Text kopieren</button></details></div><div id="dlg-editor-preview" hidden></div><div id="import-error" class="form-error" role="alert" hidden></div><div class="dialog-footer"><button class="button secondary" type="button" id="dlg-editor-back" data-action="dlg-editor-back" hidden>${icon('back')}Zurück</button><span class="import-privacy">${icon('lock')}Deine Inhalte bleiben privat.</span><button class="button primary" type="submit" id="dlg-editor-submit">Zeilen erkennen ${icon('arrow')}</button></div></form>`;
     if (source) $('#import-text').value = C.serializeDialog(source);
     $('#dlg-editor').addEventListener('submit', e => {
-      e.preventDefault();
+      e.preventDefault(); $('#import-error').hidden = true;
       try {
-        const { lines, skipped } = C.parseDialog($('#import-text').value);
-        const title = $('#dlg-title').value.trim(); if (!title) return importError('Bitte einen Titel eingeben.');
-        const old = source && !asCopy ? source : null;
-        const saved = C.validateDialog({ id: old?.id || C.uid(), title, description: old?.description || '', lines, progress: old?.progress });
-        if (old) data.dialogs[data.dialogs.indexOf(old)] = saved; else data.dialogs.push(saved);
-        dialogId = saved.id; save(); dialog.close(); drawDialog();
-        toast(`${lines.length} Zeilen gespeichert.${skipped ? ` ${skipped} ${skipped === 1 ? 'Zeile' : 'Zeilen'} ohne Sprecher übersprungen.` : ''}`);
+        if (dlgDraft) return saveDialogDraft();
+        const { lines, skippedLines } = C.parseDialog($('#import-text').value);
+        dlgDraft = lines; dlgSkipped = skippedLines;
+        drawDialogPreview();
       } catch (error) { importError(error.message); }
     });
     dialog.showModal();
+  }
+  function drawDialogPreview() {
+    $('#dlg-editor-source').hidden = true; $('#dlg-editor-preview').hidden = false; $('#dlg-editor-back').hidden = false;
+    $('#dlg-editor-submit').innerHTML = `Dialog speichern ${icon('check')}`;
+    const roles = [...new Set(dlgDraft.map(l => l.speaker).filter(Boolean))];
+    $('#dlg-editor-preview').innerHTML = `<div class="preview-heading"><strong>${dlgDraft.length} Zeilen erkannt</strong><span>Rollen: ${esc(roles.join(', '))}. Prüfe die Zeilen und korrigiere sie bei Bedarf.</span></div>${dlgSkipped.length ? `<details class="dlg-skipped"><summary>${dlgSkipped.length} ${dlgSkipped.length === 1 ? 'Zeile' : 'Zeilen'} nicht übernommen</summary><ul>${dlgSkipped.map(s => `<li>${esc(s)}</li>`).join('')}</ul></details>` : ''}<div class="dlg-edit-rows">${dlgDraft.map((l, i) => `<div class="dlg-edit-row" data-row="${i}"><input aria-label="Sprecher ${i + 1}" data-side="speaker" value="${esc(l.speaker)}" maxlength="30"><input aria-label="Spanisch ${i + 1}" data-side="es" lang="es" value="${esc(l.es)}" maxlength="500"><input aria-label="Deutsch ${i + 1}" data-side="de" value="${esc(l.de)}" maxlength="500" placeholder="Deutsch (optional)"><button type="button" class="icon-button" data-action="dlg-remove-row" data-index="${i}" aria-label="Zeile ${i + 1} entfernen">${icon('close')}</button></div>`).join('')}</div><button type="button" class="text-button" data-action="dlg-add-row">${icon('plus')}Zeile ergänzen</button>`;
+  }
+  function collectDialogDraft() {
+    document.querySelectorAll('.dlg-edit-row').forEach(row => {
+      const line = dlgDraft[Number(row.dataset.row)];
+      for (const side of ['speaker', 'es', 'de']) line[side] = row.querySelector(`[data-side="${side}"]`).value.trim();
+    });
+  }
+  function saveDialogDraft() {
+    collectDialogDraft();
+    const lines = dlgDraft.filter(l => l.es).map(l => ({ speaker: l.speaker || 'A', es: l.es, de: l.de }));
+    if (lines.length < 2) return importError('Ein Dialog braucht mindestens 2 Zeilen.');
+    const source = dlgEditorSource, old = source && !source.seed ? source : null;
+    const title = $('#dlg-title').value.trim() || old?.title || `Dialog ${data.dialogs.filter(d => !d.seed).length + 1}`;
+    const saved = C.validateDialog({ id: old?.id || C.uid(), title, description: old?.description || '', lines, progress: old?.progress });
+    if (old) data.dialogs[data.dialogs.indexOf(old)] = saved; else data.dialogs.push(saved);
+    dialogId = saved.id; dlgPart = 'all'; save(); $('#import-dialog').close(); drawDialog();
+    toast(`Dialog mit ${lines.length} Zeilen gespeichert.`);
   }
   function showSettings(duringRound = false) {
     const set = currentSet(), s = data.settings, dialog = $('#settings-dialog');
@@ -468,14 +516,22 @@
     const btn = e.target.closest('[data-action]'); if (!btn || btn.disabled) return;
     const action = btn.dataset.action;
     if (btn.dataset.id) { selectedId = btn.dataset.id; save(); }
-    if (btn.dataset.dialog) dialogId = btn.dataset.dialog;
+    if (btn.dataset.dialog) { if (dialogId !== btn.dataset.dialog) dlgPart = 'all'; dialogId = btn.dataset.dialog; }
     switch (action) {
       case 'dlg-list': return drawDialogs();
       case 'dlg-open': return drawDialog();
       case 'dlg-new': return openDialogEditor();
       case 'dlg-edit': return openDialogEditor(currentDialog());
       case 'dlg-role': dlgRole = btn.dataset.role; return drawDialog();
-      case 'dlg-start': return startDialog(Number(btn.dataset.level));
+      case 'dlg-part': dlgPart = btn.dataset.part; return drawDialog();
+      case 'dlg-editor-back': collectDialogDraft(); $('#import-text').value = C.serializeDialog({ lines: dlgDraft }); dlgDraft = null; $('#dlg-editor-source').hidden = false; $('#dlg-editor-preview').hidden = true; $('#dlg-editor-preview').innerHTML = ''; $('#dlg-editor-back').hidden = true; $('#dlg-editor-submit').innerHTML = `Zeilen erkennen ${icon('arrow')}`; return;
+      case 'dlg-remove-row': collectDialogDraft(); dlgDraft.splice(Number(btn.dataset.index), 1); return drawDialogPreview();
+      case 'dlg-add-row': collectDialogDraft(); dlgDraft.push({ speaker: dlgDraft.at(-2)?.speaker || 'A', es: '', de: '' }); drawDialogPreview(); return document.querySelector('.dlg-edit-row:last-child [data-side="es"]')?.focus();
+      case 'dlg-copy-prompt': {
+        const done = () => toast('Text kopiert.'), failed = () => toast('Kopieren ging nicht. Markiere den Text und kopiere ihn von Hand.');
+        return navigator.clipboard?.writeText ? navigator.clipboard.writeText(DIALOG_PROMPT).then(done, failed) : failed();
+      }
+      case 'dlg-start': if (btn.dataset.part) dlgPart = btn.dataset.part; return startDialog(Number(btn.dataset.level));
       case 'dlg-skip': return gradeDialogLine(true);
       case 'dlg-next': if (dlg?.answered) return nextDialogLine(); return;
       case 'dlg-accept': {
@@ -489,9 +545,9 @@
         input.setRangeText(btn.dataset.char, input.selectionStart, input.selectionEnd, 'end'); input.focus(); return;
       }
       case 'dlg-say': return speak([currentDialog().lines[Number(btn.dataset.line)].es]);
-      case 'dlg-say-all': return speak(currentDialog().lines.map(l => l.es));
+      case 'dlg-say-all': { const d = currentDialog(); return speak(C.dialogQueue(d, 'all', selectedPart(d)).map(i => d.lines[i].es)); }
       case 'dlg-exit': return confirmAction('Übung verlassen?', 'Diese Stufe zählt erst, wenn du sie zu Ende machst.', 'Zum Dialog', drawDialog);
-      case 'dlg-reset': return confirmAction('Von vorne anfangen?', 'Der Stufen-Fortschritt dieses Dialogs wird zurückgesetzt. Der Text bleibt erhalten.', 'Fortschritt zurücksetzen', () => { currentDialog().progress = { best: 0, practiced: '' }; save(); drawDialog(); toast('Fortschritt zurückgesetzt.'); });
+      case 'dlg-reset': return confirmAction('Von vorne anfangen?', 'Der Stufen-Fortschritt dieses Dialogs wird zurückgesetzt. Der Text bleibt erhalten.', 'Fortschritt zurücksetzen', () => { currentDialog().progress = { best: 0, practiced: '', parts: {} }; save(); drawDialog(); toast('Fortschritt zurückgesetzt.'); });
       case 'dlg-delete': return confirmAction('Dialog löschen?', `„${currentDialog().title}“ wird auf diesem Gerät entfernt. Exportiere bei Bedarf vorher eine Sicherung.`, 'Dialog löschen', () => { data.dialogs = data.dialogs.filter(d => d.id !== dialogId); save(); drawDialogs(); toast('Dialog gelöscht.'); });
       case 'library': termSearch = ''; return drawLibrary();
       case 'import': return openImport();

@@ -209,28 +209,73 @@
     const accentSlips = [...matched].filter(([i, word]) => normalize(word, true) !== normalize(wanted[i], true)).map(([i]) => wanted[i]);
     return { correct: wanted.length > 0 && matched.size === wanted.length && given.length === wanted.length, parts, accentSlips };
   }
-  // "Sprecher: Spanisch | Deutsch". Lines without a speaker (headings, names) are skipped and counted.
+  const cleanDialogLine = raw => String(raw).trim().replace(/^>\s*/, '').replace(/^(?:[-*•–—]\s+|\d+[.)]\s+)/, '').replace(/\*\*|__|`/g, '').replace(/^[*_]([^*_]+)[*_]$/, '$1').trim();
+  const isDashLine = raw => /^\s*[-–—]\s*\S/.test(raw);
+  const translationLabel = /^(?:de|deutsch|übersetzung|translation)$/i;
+  const isSpeakerName = name => name.split(/\s+/).length <= 3 && !/[.?!¿¡,;"„“”()]/.test(name);
+  // Splits "spanish | german", "spanish → german" and "spanish (two or more german words)".
+  function splitTranslation(text) {
+    const [es, ...rest] = text.split('|');
+    if (rest.length) return { es: es.trim(), de: rest.join('|').trim() };
+    const arrow = text.split(/\s+(?:→|->|=>)\s+/);
+    if (arrow.length > 1) return { es: arrow[0].trim(), de: arrow.slice(1).join(' ').trim() };
+    const bracket = text.match(/^(.*\S)\s+\(([^()]*\s[^()]*)\)$/);
+    if (bracket) return { es: bracket[1].trim(), de: bracket[2].trim() };
+    return { es: text.trim(), de: '' };
+  }
+  // Reads dialogues as AI chats return them: markdown, numbering, a translation below the line, text around the dialogue.
   function parseDialog(text) {
-    const lines = []; let skipped = 0;
-    for (const raw of String(text).split(/\r?\n/)) {
-      if (!raw.trim()) continue;
-      const match = raw.match(/^\s*([^:|]{1,30}?)\s*:\s*(.+)$/);
-      if (!match) { skipped++; continue; }
-      const [es, ...rest] = match[2].split('|');
-      if (!es.trim()) { skipped++; continue; }
-      lines.push({ speaker: match[1].trim(), es: es.trim().slice(0, 500), de: rest.join('|').trim().slice(0, 500) });
+    const rows = String(text).split(/\r?\n/), lines = [], skippedLines = [];
+    const hasSpeakers = rows.some(raw => { const m = cleanDialogLine(raw).match(/^([^:|]{1,30}?)\s*:\s*(.+)$/); return m && isSpeakerName(m[1]) && !translationLabel.test(m[1]); });
+    let previousBlank = true, turn = 0;
+    for (const raw of rows) {
+      const clean = cleanDialogLine(raw);
+      if (!clean) { previousBlank = true; continue; }
+      const match = clean.match(/^([^:|]{1,30}?)\s*:\s*(.+)$/), last = lines.at(-1);
+      if (match && translationLabel.test(match[1].trim()) && last && !last.de) { last.de = match[2].trim().slice(0, 500); previousBlank = false; continue; }
+      if (match && isSpeakerName(match[1].trim()) && !translationLabel.test(match[1].trim())) {
+        const parts = splitTranslation(match[2]);
+        if (parts.es) lines.push({ speaker: match[1].trim().slice(0, 30), es: parts.es.slice(0, 500), de: parts.de.slice(0, 500) });
+        else skippedLines.push(clean);
+      } else if (!hasSpeakers && isDashLine(raw)) {
+        const parts = splitTranslation(clean);
+        lines.push({ speaker: turn++ % 2 ? 'B' : 'A', es: parts.es.slice(0, 500), de: parts.de.slice(0, 500) });
+      } else if (last && !last.de && !previousBlank && !clean.endsWith(':')) {
+        last.de = clean.replace(/^\((.*)\)$/, '$1').trim().slice(0, 500);
+      } else skippedLines.push(clean);
+      previousBlank = false;
     }
-    if (lines.length < 2) throw new Error('Ein Dialog braucht mindestens 2 Zeilen im Format „A: Hola | Hallo“.');
-    if (lines.length > 100) throw new Error('Ein Dialog kann höchstens 100 Zeilen enthalten.');
-    return { lines, skipped };
+    // Comment lines such as "Anrede: ..." look like a speaker but occur once, next to the real roles.
+    const counts = new Map(); for (const line of lines) counts.set(line.speaker, (counts.get(line.speaker) || 0) + 1);
+    const regular = [...counts.values()].filter(n => n >= 2).length;
+    const kept = lines.filter(line => {
+      if (lines.length < 4 || regular < 2 || counts.get(line.speaker) >= 2) return true;
+      skippedLines.push(`${line.speaker}: ${line.es}`);
+      return false;
+    });
+    if (kept.length < 2) throw new Error('Keine Dialogzeilen gefunden. Eine Zeile sollte so aussehen: A: ¡Hola! | Hallo!');
+    if (kept.length > 100) throw new Error('Ein Dialog kann höchstens 100 Zeilen enthalten.');
+    return { lines: kept, skipped: skippedLines.length, skippedLines };
+  }
+  // Practice sections of about `size` lines. A short remainder joins the part before it.
+  function dialogParts(dialog, size = 5) {
+    const total = dialog.lines.length, parts = [];
+    for (let start = 0; start < total; start += size) {
+      const end = total - (start + size) < 3 ? total - 1 : start + size - 1;
+      parts.push({ number: parts.length + 1, start, end, key: `${start}-${end}` });
+      if (end === total - 1) break;
+    }
+    return parts;
   }
   function serializeDialog(dialog) { return dialog.lines.map(l => `${l.speaker}: ${l.es}${l.de ? ` | ${l.de}` : ''}`).join('\n'); }
   function validateDialog(raw, preserveId = true) {
     if (!raw || !Array.isArray(raw.lines)) return null;
     const lines = raw.lines.filter(l => l && String(l.es ?? '').trim()).slice(0, 100).map(l => ({ speaker: String(l.speaker || 'A').slice(0, 30), es: String(l.es).trim().slice(0, 500), de: String(l.de ?? '').trim().slice(0, 500), task: String(l.task ?? '').trim().slice(0, 300) }));
     if (lines.length < 2) return null;
-    const best = Math.min(4, Math.max(0, Math.trunc(Number(raw.progress?.best)) || 0));
-    return { id: preserveId && typeof raw.id === 'string' ? raw.id : uid(), title: String(raw.title || 'Mein Dialog').slice(0, 100), description: String(raw.description || '').slice(0, 250), seed: !!raw.seed && preserveId, lines, progress: { best, practiced: typeof raw.progress?.practiced === 'string' ? raw.progress.practiced.slice(0, 10) : '' } };
+    const stage = value => Math.min(4, Math.max(0, Math.trunc(Number(value)) || 0));
+    const parts = {};
+    for (const [key, value] of Object.entries(raw.progress?.parts && typeof raw.progress.parts === 'object' ? raw.progress.parts : {}).slice(0, 200)) if (/^\d+-\d+$/.test(key) && stage(value)) parts[key] = stage(value);
+    return { id: preserveId && typeof raw.id === 'string' ? raw.id : uid(), title: String(raw.title || 'Mein Dialog').slice(0, 100), description: String(raw.description || '').slice(0, 250), seed: !!raw.seed && preserveId, lines, progress: { best: stage(raw.progress?.best), practiced: typeof raw.progress?.practiced === 'string' ? raw.progress.practiced.slice(0, 10) : '', parts } };
   }
   // Joins two states from different devices. Nothing learned is lost: every counter keeps its higher value.
   function mergeStates(base, other) {
@@ -258,16 +303,20 @@
     for (const dialog of other?.dialogs || []) {
       const match = dialogs.find(d => d.id === dialog.id);
       if (!match) { dialogs.push(dialog); continue; }
-      match.progress = { best: Math.max(Number(match.progress?.best) || 0, Number(dialog.progress?.best) || 0), practiced: [match.progress?.practiced || '', dialog.progress?.practiced || ''].sort().at(-1) };
+      const parts = { ...(dialog.progress?.parts || {}) };
+      for (const [key, value] of Object.entries(match.progress?.parts || {})) parts[key] = Math.max(Number(parts[key]) || 0, Number(value) || 0);
+      match.progress = { best: Math.max(Number(match.progress?.best) || 0, Number(dialog.progress?.best) || 0), practiced: [match.progress?.practiced || '', dialog.progress?.practiced || ''].sort().at(-1), parts };
     }
     out.dialogs = dialogs;
     return out;
   }
   function dialogSpeakers(dialog) { return [...new Set(dialog.lines.map(l => l.speaker))]; }
   // Lines stay in dialogue order: the order itself is part of what has to be learned.
-  function dialogQueue(dialog, role = 'all') {
-    const out = []; dialog.lines.forEach((l, i) => { if (role === 'all' || l.speaker === role) out.push(i); });
-    return out.length ? out : dialog.lines.map((_, i) => i);
+  function dialogQueue(dialog, role = 'all', part = null) {
+    const inPart = i => !part || (i >= part.start && i <= part.end);
+    const all = dialog.lines.map((_, i) => i).filter(inPart);
+    const out = all.filter(i => role === 'all' || dialog.lines[i].speaker === role);
+    return out.length ? out : all;
   }
-  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, mergeStates, dialogSpeakers, dialogQueue };
+  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, mergeStates, dialogParts, dialogSpeakers, dialogQueue };
 });

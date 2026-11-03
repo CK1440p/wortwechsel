@@ -58,3 +58,14 @@ dialog{padding:28px;border:1px solid var(--border);border-radius:22px;box-shadow
 .account-status{font-size:13px;margin:4px 0 12px}
 #account-error{margin-top:10px}
 @media(max-width:540px){.account-button{width:34px;padding:0;justify-content:center}.account-button span{display:none}}
+
+/* Dialog parts and the paste preview */
+.dlg-bubble.is-out{opacity:.35}
+.dlg-prompt-help,.dlg-skipped{margin-top:10px;font-size:13px;color:var(--muted)}
+.dlg-prompt-help summary,.dlg-skipped summary{cursor:pointer;font-weight:600;color:var(--text)}
+.dlg-prompt-text{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:12.5px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:8px 0}
+.dlg-skipped ul{margin:6px 0 0;padding-left:18px}
+.dlg-edit-rows{display:flex;flex-direction:column;gap:6px;margin:10px 0;max-height:46vh;overflow:hidden auto;padding:3px}
+.dlg-edit-row{display:grid;grid-template-columns:88px 1fr 1fr 34px;gap:6px;align-items:center}
+.dlg-edit-row input{width:100%;min-width:0;font:inherit;font-size:13px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:7px 9px}
+@media(max-width:640px){.dlg-edit-row{grid-template-columns:1fr 34px;padding-bottom:8px;border-bottom:1px solid var(--border)}.dlg-edit-row [data-side="es"],.dlg-edit-row [data-side="de"]{grid-column:1/-1}.dlg-edit-row .icon-button{grid-column:2;grid-row:1}}
