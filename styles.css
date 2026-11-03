@@ -46,3 +46,15 @@ dialog{padding:28px;border:1px solid var(--border);border-radius:22px;box-shadow
 .dlg-actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:16px}
 .dlg-format{font-size:12px;color:var(--muted);margin:6px 0 0}
 @media(max-width:540px){.dlg-bubble{max-width:96%}.dlg-card{padding:18px}.dlg-cloze{font-size:15px}}
+
+/* Account button and dialog */
+.account-button{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:10px;background:var(--blue-light);color:var(--blue);font-size:12.5px;font-weight:650;position:relative}
+.account-button .icon{width:16px;height:16px}
+.account-button:hover{background:var(--blue);color:#fff}
+.account-button.is-signed-in::after{content:'';position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--green)}
+.account-button[data-state="syncing"]::after,.account-button[data-state="waiting"]::after{background:#e0a93a}
+.account-button[data-state="offline"]::after,.account-button[data-state="error"]::after{background:#d64b5b}
+.account-email{font-size:15px;font-weight:650;color:var(--text);margin-top:8px;overflow-wrap:anywhere}
+.account-status{font-size:13px;margin:4px 0 12px}
+#account-error{margin-top:10px}
+@media(max-width:540px){.account-button{width:34px;padding:0;justify-content:center}.account-button span{display:none}}
