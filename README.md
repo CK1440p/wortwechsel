@@ -11,6 +11,8 @@ Privater, statischer Vokabeltrainer. Einstieg: `dist/index.html`.
 - Sets und Fortschritt liegen nur in Local Storage dieses Browserprofils und dieser Domain. Keine geräteübergreifende Synchronisierung. Sicherung exportieren, bevor Browserdaten gelöscht werden.
 - Keine Laufzeit-Abhängigkeiten. Optionale Webfonts mit System-Fallback.
 
+- Konto: Anmeldung per Link aus der E-Mail über Supabase. Der Stand aus Local Storage wird in `public.user_data` gespiegelt und zwischen Geräten zusammengeführt. Ohne Anmeldung läuft alles wie zuvor nur lokal. Live: https://ck1440p.github.io/wortwechsel/
+
 Tests: `npm test`. Die Tests umfassen Parser, Antwortvarianten, adaptive Lernschritte, zufällige Richtungen und Anwendungsabläufe in einer DOM-Simulation. Ein tatsächlicher Browser- und Layouttest erfordert eine verfügbare Browserverbindung.
 
 Die Hosting-Konfiguration steht in `.openai/hosting.json`. Die private Veröffentlichung wird über die Sites-Skill verwaltet.

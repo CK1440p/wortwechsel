@@ -1,3 +1,5 @@
 node_modules/
 .sites-runtime/
 *.log
+supabase/.temp/
+supabase/.branches/

@@ -14,6 +14,8 @@
   <script src="seed.js" defer></script>
   <script src="app.js" defer></script>
   <script src="effects.js" defer></script>
+  <script src="vendor/supabase.js" defer></script>
+  <script src="sync.js" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -32,7 +34,7 @@
       </div>
     </aside>
     <div class="main-shell">
-      <header class="topbar"><div class="breadcrumb" id="breadcrumb">Dein Lernraum <span>/</span> <strong>Meine Lernsets</strong></div><div class="topbar-right"><button class="icon-button theme-toggle" id="theme-toggle" aria-label="Farbschema wechseln" aria-pressed="true"><svg class="icon sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2"/></svg><svg class="icon moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z"/></svg></button><span class="private-badge"><span data-icon="lock"></span> Nur für dich</span><button class="icon-button" id="top-settings" aria-label="Lerneinstellungen" title="Lerneinstellungen"><span data-icon="settings"></span></button></div></header>
+      <header class="topbar"><div class="breadcrumb" id="breadcrumb">Dein Lernraum <span>/</span> <strong>Meine Lernsets</strong></div><div class="topbar-right"><button class="icon-button theme-toggle" id="theme-toggle" aria-label="Farbschema wechseln" aria-pressed="true"><svg class="icon sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2"/></svg><svg class="icon moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z"/></svg></button><button class="account-button" id="account-btn" type="button" hidden><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg><span>Anmelden</span></button><button class="icon-button" id="top-settings" aria-label="Lerneinstellungen" title="Lerneinstellungen"><span data-icon="settings"></span></button></div></header>
       <div id="storage-warning" class="storage-warning" hidden>Dein Browser kann gerade nichts speichern. Lass die Seite offen und exportiere eine Sicherung, damit nichts verloren geht.</div>
       <main id="main" tabindex="-1"></main>
 

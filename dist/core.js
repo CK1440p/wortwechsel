@@ -232,11 +232,42 @@
     const best = Math.min(4, Math.max(0, Math.trunc(Number(raw.progress?.best)) || 0));
     return { id: preserveId && typeof raw.id === 'string' ? raw.id : uid(), title: String(raw.title || 'Mein Dialog').slice(0, 100), description: String(raw.description || '').slice(0, 250), seed: !!raw.seed && preserveId, lines, progress: { best, practiced: typeof raw.progress?.practiced === 'string' ? raw.progress.practiced.slice(0, 10) : '' } };
   }
+  // Joins two states from different devices. Nothing learned is lost: every counter keeps its higher value.
+  function mergeStates(base, other) {
+    const out = { ...other, ...base, selectedId: other?.selectedId ?? base?.selectedId };
+    const bestDirection = (a, b) => ({ mc: Math.max(a.mc, b.mc), written: Math.max(a.written, b.written), wrong: Math.max(a.wrong, b.wrong) });
+    const termKey = t => `${t.front}\n${t.back}`;
+    const mergeTerm = (a, b) => {
+      if (!a.progress && !b.progress) return a;
+      return { ...a, progress: { forward: bestDirection(directionState(a, false), directionState(b, false)), reverse: bestDirection(directionState(a, true), directionState(b, true)) } };
+    };
+    const sets = (base?.sets || []).map(s => ({ ...s, terms: [...s.terms] }));
+    for (const set of other?.sets || []) {
+      const match = sets.find(s => s.id === set.id) || sets.find(s => s.title === set.title);
+      if (!match) { sets.push(set); continue; }
+      for (const term of set.terms) {
+        const index = match.terms.findIndex(t => termKey(t) === termKey(term));
+        if (index < 0) match.terms.push(term);
+        else match.terms[index] = mergeTerm(match.terms[index], term);
+      }
+    }
+    out.sets = sets;
+    out.history = { ...(other?.history || {}) };
+    for (const [day, count] of Object.entries(base?.history || {})) out.history[day] = Math.max(Number(out.history[day]) || 0, Number(count) || 0);
+    const dialogs = (base?.dialogs || []).map(d => ({ ...d, progress: { ...d.progress } }));
+    for (const dialog of other?.dialogs || []) {
+      const match = dialogs.find(d => d.id === dialog.id);
+      if (!match) { dialogs.push(dialog); continue; }
+      match.progress = { best: Math.max(Number(match.progress?.best) || 0, Number(dialog.progress?.best) || 0), practiced: [match.progress?.practiced || '', dialog.progress?.practiced || ''].sort().at(-1) };
+    }
+    out.dialogs = dialogs;
+    return out;
+  }
   function dialogSpeakers(dialog) { return [...new Set(dialog.lines.map(l => l.speaker))]; }
   // Lines stay in dialogue order: the order itself is part of what has to be learned.
   function dialogQueue(dialog, role = 'all') {
     const out = []; dialog.lines.forEach((l, i) => { if (role === 'all' || l.speaker === role) out.push(i); });
     return out.length ? out : dialog.lines.map((_, i) => i);
   }
-  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, dialogSpeakers, dialogQueue };
+  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, mergeStates, dialogSpeakers, dialogQueue };
 });

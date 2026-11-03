@@ -2,6 +2,6 @@
   "name": "wortwechsel",
   "version": "1.0.0",
   "private": true,
-  "scripts": { "test": "node --test tests/core.test.cjs tests/app.test.cjs" },
+  "scripts": { "test": "node --test tests/core.test.cjs tests/app.test.cjs tests/sync.test.cjs" },
   "devDependencies": { "linkedom": "0.18.12" }
 }

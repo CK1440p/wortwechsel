@@ -47,13 +47,13 @@
   function validateSettings(raw) {
     return { mode: ['adaptive', 'mc', 'written'].includes(raw?.mode) ? raw.mode : 'adaptive', direction: ['random', 'forward', 'reverse'].includes(raw?.direction) ? raw.direction : 'random', roundSize: ['5', '10', '20', 'all'].includes(String(raw?.roundSize)) ? String(raw.roundSize) : '10', accents: !!raw?.accents, articles: raw?.articles !== false };
   }
-  let data, storageFailed = false, storageBlocked = false, lastStored = null;
+  function hydrate(raw) { return { ...raw, sets: raw.sets.map(s => validateSet(s, true)), settings: validateSettings(raw.settings), history: raw.history && typeof raw.history === 'object' ? raw.history : {} }; }
+  let data, storageFailed = false, storageBlocked = false, lastStored = null, applyingRemote = false;
   try {
     const stored = localStorage.getItem(KEY);
     lastStored = stored;
     if (stored) {
-      const raw = JSON.parse(stored);
-      data = { ...raw, sets: raw.sets.map(s => validateSet(s, true)), settings: validateSettings(raw.settings), history: raw.history && typeof raw.history === 'object' ? raw.history : {} };
+      data = hydrate(JSON.parse(stored));
     }
   } catch {
     storageFailed = true; storageBlocked = true;
@@ -88,6 +88,7 @@
       const serialized = JSON.stringify(data);
       localStorage.setItem(KEY, serialized); lastStored = serialized;
       storageFailed = false; $('#storage-warning').hidden = true;
+      if (!applyingRemote) window.WWSync?.changed();
       return true;
     }
     catch { storageFailed = true; $('#storage-warning').hidden = false; }
@@ -542,6 +543,23 @@
       if (e.key === 'ArrowLeft') { e.preventDefault(); moveCard(-1); }
     }
   });
+  // Interface for sync.js. Remote data only replaces the local state while no practice round is running.
+  window.WWApp = {
+    toast,
+    snapshot: () => data,
+    canApply: () => !storageBlocked && !session?.current && !dlg && !document.querySelector('dialog[open]'),
+    apply(raw) {
+      const next = hydrate(raw); next.dialogs = mergeDialogs(next.dialogs);
+      data = next;
+      if (!data.sets.some(s => s.id === selectedId)) selectedId = data.selectedId && data.sets.some(s => s.id === data.selectedId) ? data.selectedId : data.sets[0]?.id;
+      applyingRemote = true; save(); applyingRemote = false;
+      if (view === 'library') drawLibrary();
+      else if (view === 'set') drawSet();
+      else if (view === 'dialogs' && document.querySelector('.dlg-transcript')) drawDialog();
+      else if (view === 'dialogs' && document.querySelector('.dialog-grid')) drawDialogs();
+      else renderShell();
+    },
+  };
   $('#storage-warning').hidden = !storageFailed;
   save(); hydrateIcons(); drawLibrary();
 })();
