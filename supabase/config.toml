@@ -3,7 +3,7 @@ project_id = "wortwechsel"
 [auth]
 site_url = "https://ck1440p.github.io/wortwechsel/"
 additional_redirect_urls = ["https://ck1440p.github.io/wortwechsel/"]
-enable_signup = true
+enable_signup = false
 
 [auth.email]
-enable_signup = true
+enable_signup = false
