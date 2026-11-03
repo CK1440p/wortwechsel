@@ -26,6 +26,8 @@
     shirt: '<path d="m8 3-6 4 3 5 3-2v11h8V10l3 2 3-5-6-4c0 4-8 4-8 0Z"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     book: '<path d="M12 6C8 3 4 4 2 5v15c4-2 7-1 10 1 3-2 6-3 10-1V5c-2-1-6-2-10 1Zm0 0v15"/>',
+    chat: '<path d="M4 5h16v11H9l-5 4Z"/><path d="M8 9h8m-8 3h5"/>',
+    sound: '<path d="M4 9v6h4l5 4V5L8 9Z"/><path d="M16.5 9a4 4 0 0 1 0 6"/>',
   };
   const icon = (name, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.book}</svg>`;
   function hydrateIcons() { document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon); el.removeAttribute('data-icon'); }); }
@@ -62,6 +64,13 @@
     data = { sets: [{ ...seed, terms: C.parseImport(seed.pairs).terms, created: Date.now() }], settings: { ...defaults }, history: {}, selectedId: seed.id };
     delete data.sets[0].pairs;
   }
+  // Built-in dialogues always come from seed.js, so text fixes reach existing users. Only their progress is stored.
+  function mergeDialogs(stored) {
+    const valid = (Array.isArray(stored) ? stored : []).map(d => C.validateDialog(d)).filter(Boolean);
+    const seeds = (window.WWDialogSeed || []).map(seed => C.validateDialog({ ...seed, progress: valid.find(d => d.id === seed.id)?.progress }));
+    return [...seeds, ...valid.filter(d => !seeds.some(s => s.id === d.id))];
+  }
+  data.dialogs = mergeDialogs(data.dialogs);
   let selectedId = data.selectedId || data.sets[0]?.id, view = 'library', session = null, flash = null, termSearch = '', librarySearch = '';
   let importDraft = null, importTarget = null, importRaw = '', importWarnings = [], toastTimer, fileLoadVersion = 0;
   const currentSet = () => data.sets.find(s => s.id === selectedId) || data.sets[0];
@@ -89,6 +98,7 @@
     $('#set-count').textContent = data.sets.length;
     document.querySelectorAll('.nav-item[data-view]').forEach(el => el.classList.toggle('active', view === el.dataset.view));
     $('#nav-practice').classList.toggle('active', view === 'learn');
+    stopSpeech();
     hydrateIcons();
   }
   function streak() {
@@ -199,6 +209,162 @@
     $('#main').innerHTML = `<section class="flash-page"><button class="back-link" data-action="open-set">${icon('back')}${esc(set.title)}</button><div class="section-heading"><div><h1>Karteikarten</h1></div><button class="button secondary" data-action="shuffle-cards">${icon('swap')}Mischen</button></div><button class="flashcard ${flash.flipped ? 'flipped' : ''}" data-action="flip-card" aria-label="Karte umdrehen"><span class="card-language">${esc(flash.flipped ? flash.reverse ? set.frontLang : set.backLang : flash.reverse ? set.backLang : set.frontLang)}</span><strong dir="auto">${esc(flash.flipped ? flash.reverse ? t.front : t.back : flash.reverse ? t.back : t.front)}</strong><span class="flip-hint">${icon('swap')}Klicken oder Leertaste zum Umdrehen</span></button><div class="flash-controls"><button class="round-button" data-action="prev-card" aria-label="Vorherige Karte">${icon('back')}</button><span>${flash.index + 1} <span>/ ${flash.terms.length}</span></span><button class="round-button" data-action="next-card" aria-label="Nächste Karte">${icon('arrow')}</button></div><div class="mini-progress"><span style="width:${(flash.index + 1) / flash.terms.length * 100}%"></span></div><p class="center muted">Mit Karteikarten wiederholst du frei. Fortschritt sammelst du im Lernmodus.</p><button class="button primary flash-learn" data-action="learn">${icon('spark')}Jetzt abfragen lassen</button></section>`;
   }
   function moveCard(delta) { flash.index = (flash.index + delta + flash.terms.length) % flash.terms.length; flash.flipped = false; flash.reverse = data.settings.direction === 'reverse' || data.settings.direction === 'random' && Math.random() < 0.5; drawFlashcard(); }
+  // ---- Dialog mode: read, then fewer and fewer cues, then free writing from a German brief. ----
+  const DLG_STAGES = [
+    { level: 1, name: 'Lücken', text: 'Einzelne Wörter fehlen. Demonstrativpronomen immer.' },
+    { level: 2, name: 'Viele Lücken', text: 'Die meisten Wörter fehlen, nur der erste Buchstabe bleibt.' },
+    { level: 3, name: 'Aus dem Kopf', text: 'Du siehst nur Deutsch und schreibst den ganzen Satz.' },
+    { level: 4, name: 'Testangabe', text: 'Wie im Test: nur Anweisungen, du schreibst alles am Stück.' },
+  ];
+  const PASS_RATIO = 0.8, ACCENT_CHARS = 'á é í ó ú ü ñ ¿ ¡'.split(' ');
+  let dialogId = null, dlg = null, dlgRole = 'all', dlgLastInput = null, speechRun = 0;
+  const currentDialog = () => data.dialogs.find(d => d.id === dialogId);
+  const canSpeak = () => typeof window.speechSynthesis?.speak === 'function';
+  function stopSpeech() { speechRun++; if (canSpeak()) window.speechSynthesis.cancel(); }
+  function speak(texts) {
+    if (!canSpeak()) return;
+    stopSpeech();
+    const run = speechRun, voices = window.speechSynthesis.getVoices();
+    const voice = voices.find(v => /^es/i.test(v.lang));
+    // A non-Spanish voice would teach the wrong pronunciation, so stay silent instead.
+    if (voices.length && !voice) return toast('Auf diesem Gerät fehlt eine spanische Stimme. Du kannst sie in den Spracheinstellungen des Systems installieren.');
+    const next = i => {
+      if (run !== speechRun || i >= texts.length) return;
+      const utterance = new window.SpeechSynthesisUtterance(texts[i]);
+      utterance.lang = 'es-ES'; utterance.rate = 0.9; if (voice) utterance.voice = voice;
+      utterance.onend = () => next(i + 1);
+      window.speechSynthesis.speak(utterance);
+    };
+    next(0);
+  }
+  const accentKeys = () => `<div class="accent-keys">${ACCENT_CHARS.map(char => `<button type="button" data-action="dlg-accent" data-char="${char}" tabindex="-1">${char}</button>`).join('')}</div>`;
+  const markedLine = text => C.lineTokens(text).map(t => t.word && C.isDemonstrative(t.text) ? `<mark>${esc(t.text)}</mark>` : esc(t.text)).join('');
+  function speakerSide(dialog, speaker) { return C.dialogSpeakers(dialog).indexOf(speaker) % 2 === 1; }
+  const stageLabel = best => best >= 4 ? 'Alle Stufen geschafft' : best ? `Stufe ${best} von 4 geschafft` : 'Noch nicht begonnen';
+  function drawDialogs() {
+    view = 'dialogs'; session = null; flash = null; dlg = null; renderShell('Dialoge');
+    $('#main').innerHTML = `<section class="page-intro"><div><h1>Dialoge<span class="blue-dot">.</span></h1><p>Erst lesen, dann mit immer weniger Hilfe selbst schreiben.</p></div><button class="button primary" data-action="dlg-new">${icon('plus')}Eigener Dialog</button></section><div class="dialog-grid">${data.dialogs.map(d => `<button class="dialog-card" data-action="dlg-open" data-dialog="${esc(d.id)}"><strong>${esc(d.title)}</strong><small>${esc(d.description || 'Eigener Dialog')}</small><small>${d.lines.length} Zeilen · ${stageLabel(d.progress.best)}</small><span class="mini-progress"><span style="width:${d.progress.best / 4 * 100}%"></span></span></button>`).join('')}</div>`;
+  }
+  function drawDialog() {
+    const d = currentDialog(); if (!d) return drawDialogs();
+    view = 'dialogs'; session = null; flash = null; dlg = null; renderShell(d.title);
+    const speakers = C.dialogSpeakers(d), nextLevel = Math.min(4, d.progress.best + 1);
+    if (dlgRole !== 'all' && !speakers.includes(dlgRole)) dlgRole = 'all';
+    const today = d.progress.practiced === localDate();
+    $('#main').innerHTML = `<button class="back-link" data-action="dlg-list">${icon('back')} Alle Dialoge</button><section class="set-page-heading"><div class="set-emoji big">${icon('chat')}</div><div><div class="eyebrow">${d.lines.length} ZEILEN · ${esc(stageLabel(d.progress.best).toUpperCase())}</div><h1>${esc(d.title)}</h1></div><button class="icon-button" data-action="dlg-edit" aria-label="Dialog bearbeiten" title="${d.seed ? 'Als eigene Kopie bearbeiten' : 'Dialog bearbeiten'}">${icon('edit')}</button></section>
+      <section class="dlg-section"><h2>Üben</h2><p>${d.progress.best >= 4 ? today ? 'Für heute reicht das. Morgen nochmal Stufe 3 oder 4, dann bleibt es hängen.' : 'Kurz wiederholen: Stufe 3 oder 4.' : 'Mach am besten weiter bei der markierten Stufe.'}</p><div class="dlg-roles" role="group" aria-label="Rolle wählen"><span>Du übst:</span>${['all', ...speakers].map(r => `<button class="dlg-role" data-action="dlg-role" data-role="${esc(r)}" aria-pressed="${dlgRole === r}">${r === 'all' ? 'Beide Rollen' : esc(r)}</button>`).join('')}</div><div class="dlg-stages">${DLG_STAGES.map(s => `<button class="dlg-stage ${s.level === nextLevel && d.progress.best < 4 ? 'next' : ''}" data-action="dlg-start" data-level="${s.level}"><span class="dlg-stage-top">STUFE ${s.level}${d.progress.best >= s.level ? icon('check') : ''}</span><strong>${s.name}</strong><small>${s.text}</small></button>`).join('')}</div></section>
+      <section class="dlg-section"><div class="section-heading"><div><h2>Lesen</h2><p>Markiert sind die Demonstrativpronomen.</p></div>${canSpeak() ? `<button class="button secondary" data-action="dlg-say-all">${icon('sound')}Alles anhören</button>` : ''}</div><div class="dlg-transcript">${d.lines.map((l, i) => `<div class="dlg-bubble ${speakerSide(d, l.speaker) ? 'right' : ''}"><div class="dlg-speaker">${esc(l.speaker)}${canSpeak() ? `<button class="dlg-say" data-action="dlg-say" data-line="${i}" aria-label="Zeile ${i + 1} anhören">${icon('sound')}</button>` : ''}</div><div class="dlg-es" lang="es">${markedLine(l.es)}</div>${l.de ? `<div class="dlg-de">${esc(l.de)}</div>` : ''}</div>`).join('')}</div><div class="set-danger-zone"><button class="text-button" data-action="dlg-reset">Fortschritt zurücksetzen</button>${d.seed ? '' : `<button class="text-button danger" data-action="dlg-delete">${icon('trash')}Dialog löschen</button>`}</div></section>`;
+  }
+  function startDialog(level) {
+    const d = currentDialog(); if (!d) return drawDialogs();
+    if (level === 4) { dlg = { level, answered: false }; return drawDialogBrief(); }
+    const queue = C.dialogQueue(d, dlgRole);
+    dlg = { level, queue, total: queue.length, done: 0, firstTry: 0, missed: new Set(), current: null, answered: false, cloze: null, attempts: 0 };
+    nextDialogLine();
+  }
+  function nextDialogLine() {
+    if (!dlg.queue.length) return drawDialogResult();
+    dlg.current = dlg.queue.shift(); dlg.answered = false;
+    dlg.cloze = dlg.level < 3 ? C.clozeLine(currentDialog().lines[dlg.current].es, dlg.level) : null;
+    drawDialogLine();
+  }
+  function drawDialogLine() {
+    const d = currentDialog(), line = d.lines[dlg.current], prev = d.lines[dlg.current - 1], stage = DLG_STAGES[dlg.level - 1];
+    const cue = line.de || C.lineWords(line.es).map(w => w[0] + '…').join(' ');
+    const field = dlg.level < 3
+      ? `<div class="dlg-cloze" lang="es">${dlg.cloze.map((t, i) => t.blank ? `<input class="dlg-blank" name="word-${i}" data-token="${i}" style="width:${Math.max(3, t.text.length) + 2}ch" placeholder="${esc(t.hint ? t.hint + '…' : '')}" aria-label="Fehlendes Wort" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">` : esc(t.text)).join('')}</div>`
+      : `<label class="answer-label" for="dlg-line">Dein Satz auf Spanisch</label><input id="dlg-line" class="dlg-line-input" lang="es" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">`;
+    $('#main').innerHTML = `<section class="learning-shell"><div class="learning-top"><button class="back-link" data-action="dlg-exit">${icon('back')}Dialog</button><span class="learning-set-name">Stufe ${dlg.level} · ${stage.name}</span><span></span></div><div class="round-progress"><div><strong>${esc(d.title)}</strong><span>${dlg.done} / ${dlg.total} Zeilen geschafft</span></div><div class="mini-progress"><span style="width:${Math.round(dlg.done / dlg.total * 100)}%"></span></div></div><div class="dlg-card">${prev ? `<div class="dlg-bubble dlg-context"><div class="dlg-speaker">${esc(prev.speaker)}</div><div class="dlg-es" lang="es">${esc(prev.es)}</div></div>` : ''}<div class="dlg-prompt"><small>${esc(line.speaker)} sagt</small>${esc(cue)}</div><form id="dlg-form">${field}${accentKeys()}<div class="write-actions"><button type="button" class="text-button" data-action="dlg-skip">Weiß ich noch nicht</button><button type="submit" class="button primary">Prüfen ${icon('arrow')}</button></div></form><div id="dlg-feedback" class="answer-feedback" role="status" aria-live="polite"></div></div><div class="shortcut-hint"><kbd>Tab</kbd> Nächste Lücke <span>·</span> <kbd>Enter</kbd> Prüfen / weiter</div></section>`;
+    $('#dlg-form').addEventListener('submit', e => { e.preventDefault(); if (!dlg.answered) gradeDialogLine(); });
+    document.querySelector('.dlg-card').addEventListener('focusin', e => { if (e.target.matches('input,textarea')) dlgLastInput = e.target; });
+    requestAnimationFrame(() => document.querySelector('.dlg-blank, #dlg-line')?.focus({ preventScroll: true }));
+  }
+  function gradeDialogLine(skip = false) {
+    if (!dlg || dlg.answered) return;
+    const d = currentDialog(), line = d.lines[dlg.current], accents = data.settings.accents;
+    const fields = [...document.querySelectorAll('.dlg-blank, #dlg-line')];
+    if (!skip && !fields.some(f => String(f.value).trim())) return fields[0]?.focus();
+    let correct = false, parts, slips = [];
+    if (skip) parts = C.lineTokens(line.es).map(t => t.word ? { ...t, ok: false } : t);
+    else if (dlg.level < 3) {
+      correct = true;
+      const given = new Map(fields.map(f => [Number(f.dataset.token), f]));
+      parts = dlg.cloze.map((t, i) => {
+        if (!t.blank) return t;
+        const result = C.compareLine(given.get(i).value, t.text, { accents });
+        given.get(i).classList.add(result.correct ? 'is-right' : 'is-wrong');
+        if (!result.correct) correct = false;
+        slips.push(...result.accentSlips);
+        return { ...t, ok: result.correct };
+      });
+    } else ({ correct, parts, accentSlips: slips } = C.compareLine(fields[0].value, line.es, { accents }));
+    dlg.answered = true; dlg.attempts++;
+    const today = localDate(); data.history[today] = (Number(data.history[today]) || 0) + 1;
+    applyDialogResult(correct); save();
+    fields.forEach(f => { f.disabled = true; });
+    document.querySelectorAll('#dlg-form button').forEach(b => { b.disabled = true; });
+    const canAccept = !correct && !skip && dlg.level === 3;
+    const box = $('#dlg-feedback'); box.className = `answer-feedback visible ${correct ? 'correct' : 'incorrect'}`;
+    box.innerHTML = `<div class="feedback-title">${icon(correct ? 'check' : 'book')}<strong>${correct ? 'Richtig' : 'So heißt der Satz'}</strong></div><div class="feedback-answer" lang="es">${parts.map(p => p.word && p.ok === false ? `<span class="dlg-missed">${esc(p.text)}</span>` : esc(p.text)).join('')}</div>${slips.length ? `<p class="dlg-accent-note">Zählt als richtig, im Test aber auf den Akzent achten: ${esc([...new Set(slips)].join(', '))}</p>` : ''}${correct ? '' : '<p>Kommt am Ende der Runde noch einmal dran.</p>'}<div class="dlg-feedback-actions"><button class="button ${correct ? 'success' : 'primary'}" data-action="dlg-next">${dlg.queue.length ? 'Weiter' : 'Ergebnis ansehen'} ${icon('arrow')}</button>${canAccept ? '<button class="text-button" data-action="dlg-accept">War doch richtig</button>' : ''}</div>`;
+    box.querySelector('[data-action="dlg-next"]').focus({ preventScroll: true });
+  }
+  function applyDialogResult(correct) {
+    if (correct) { dlg.done++; if (!dlg.missed.has(dlg.current)) dlg.firstTry++; }
+    else { dlg.missed.add(dlg.current); dlg.queue.push(dlg.current); }
+  }
+  function finishDialogStage(passed) {
+    const d = currentDialog();
+    d.progress.practiced = localDate();
+    if (passed) d.progress.best = Math.max(d.progress.best, dlg.level);
+    save();
+  }
+  function drawDialogResult() {
+    const d = currentDialog(), ratio = dlg.firstTry / dlg.total, passed = ratio >= PASS_RATIO, level = dlg.level;
+    finishDialogStage(passed);
+    const missed = [...dlg.missed].sort((a, b) => a - b);
+    const goOn = passed && level < 4;
+    $('#main').innerHTML = `<section class="result-page"><div class="result-icon">${icon('check')}<span>✦</span></div><h1>Stufe ${level} ${passed ? 'geschafft' : 'durchgespielt'}<span class="blue-dot">.</span></h1><p>${passed ? 'Bereit für weniger Hilfe.' : 'Noch unter 80 % beim ersten Versuch: Wiederhole diese Stufe, bevor du weitergehst.'}</p><div class="result-stats"><div><strong>${dlg.firstTry} / ${dlg.total}</strong><span>beim ersten Versuch</span></div><div><strong>${dlg.attempts}</strong><span>Antworten gegeben</span></div><div><strong>${missed.length}</strong><span>${missed.length === 1 ? 'Zeile wiederholt' : 'Zeilen wiederholt'}</span></div></div>${missed.length ? `<div class="result-review"><h3>Wiederholte Zeilen</h3>${missed.map(i => `<div><span lang="es">${esc(d.lines[i].es)}</span></div>`).join('')}</div>` : '<div class="perfect-note">Keine Fehler.</div>'}<div class="result-actions">${goOn ? `<button class="button primary" data-action="dlg-start" data-level="${level + 1}">Weiter zu Stufe ${level + 1} ${icon('arrow')}</button><button class="button secondary" data-action="dlg-start" data-level="${level}">Nochmal</button>` : `<button class="button primary" data-action="dlg-start" data-level="${level}">Stufe ${level} wiederholen ${icon('arrow')}</button>`}<button class="text-button" data-action="dlg-open" data-dialog="${esc(d.id)}">Zurück zum Dialog</button></div></section>`;
+    dlg = null;
+  }
+  function drawDialogBrief() {
+    const d = currentDialog();
+    $('#main').innerHTML = `<section class="learning-shell"><div class="learning-top"><button class="back-link" data-action="dlg-exit">${icon('back')}Dialog</button><span class="learning-set-name">Stufe 4 · Testangabe</span><span></span></div><div class="dlg-card"><h2>Schreib den Dialog auf Spanisch</h2><p class="dlg-accent-note">Jede Anweisung braucht mindestens einen Satz. Ohne Nachschauen, danach vergleichst du selbst.</p><ol class="dlg-tasks">${d.lines.map(l => `<li><b>${esc(l.speaker)}:</b> ${esc(l.task || l.de || C.lineWords(l.es).map(w => w[0] + '…').join(' '))}</li>`).join('')}</ol><form id="dlg-essay-form"><textarea id="dlg-essay" class="dlg-essay" lang="es" aria-label="Dein Dialog" placeholder="¡Hola! …" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>${accentKeys()}<div class="write-actions"><span></span><button type="submit" class="button primary">Vergleichen ${icon('arrow')}</button></div></form></div></section>`;
+    $('#dlg-essay-form').addEventListener('submit', e => { e.preventDefault(); const text = $('#dlg-essay').value; if (text.trim()) drawDialogCheck(text); else $('#dlg-essay').focus(); });
+    const essay = $('#dlg-essay'); essay.addEventListener('focus', () => { dlgLastInput = essay; }); dlgLastInput = essay;
+    requestAnimationFrame(() => essay.focus({ preventScroll: true }));
+  }
+  function drawDialogCheck(text) {
+    const d = currentDialog(), have = ` ${C.lineWords(text).map(w => C.normalize(w)).join(' ')} `;
+    const today = localDate(); data.history[today] = (Number(data.history[today]) || 0) + 1; save();
+    // Exact matches are ticked as a starting point. Free writing can only be judged by the learner.
+    const found = l => have.includes(` ${C.lineWords(l.es).map(w => C.normalize(w)).join(' ')} `);
+    $('#main').innerHTML = `<section class="learning-shell"><div class="learning-top"><button class="back-link" data-action="dlg-exit">${icon('back')}Dialog</button><span class="learning-set-name">Stufe 4 · Vergleichen</span><span></span></div><div class="dlg-card"><h2>Hast du jeden Schritt drin?</h2><p class="dlg-accent-note">Wörtlich gleiche Sätze sind schon angehakt. Hak auch an, was anders formuliert, aber richtig ist.</p><div class="dlg-mine" lang="es">${esc(text)}</div><form id="dlg-check-form">${d.lines.map((l, i) => `<label class="dlg-check"><input type="checkbox" name="line-${i}" ${found(l) ? 'checked' : ''}><span><span class="dlg-es" lang="es">${esc(l.es)}</span><span class="dlg-de" style="display:block">${esc(l.speaker)}${l.task || l.de ? ` · ${esc(l.task || l.de)}` : ''}</span></span></label>`).join('')}<div class="dlg-actions"><button type="submit" class="button primary">Ergebnis speichern ${icon('check')}</button></div></form></div></section>`;
+    $('#dlg-check-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const boxes = [...document.querySelectorAll('.dlg-check input')], ticked = boxes.filter(b => b.checked).length, passed = ticked / boxes.length >= PASS_RATIO;
+      finishDialogStage(passed);
+      $('#main').innerHTML = `<section class="result-page"><div class="result-icon">${icon('check')}<span>✦</span></div><h1>${ticked} von ${boxes.length} Schritten<span class="blue-dot">.</span></h1><p>${passed ? 'Das reicht für den Test. Bau zur Übung etwas um: andere Kleidung, anderes Problem.' : 'Unter 80 %: Übe die fehlenden Zeilen in Stufe 3 und schreib ihn dann nochmal.'}</p><div class="result-actions"><button class="button primary" data-action="dlg-start" data-level="${passed ? 4 : 3}">${passed ? 'Nochmal schreiben' : 'Zu Stufe 3'} ${icon('arrow')}</button><button class="text-button" data-action="dlg-open" data-dialog="${esc(d.id)}">Zurück zum Dialog</button></div></section>`;
+      dlg = null;
+    });
+  }
+  function openDialogEditor(source = null) {
+    const dialog = $('#import-dialog'), asCopy = !!source?.seed;
+    dialog.innerHTML = `<div class="dialog-header"><div><h2 id="import-heading">${source && !asCopy ? 'Dialog bearbeiten' : asCopy ? 'Eigene Kopie bearbeiten' : 'Eigener Dialog'}</h2></div><button class="icon-button" data-close="import-dialog" aria-label="Schließen">${icon('close')}</button></div><form id="dlg-editor"><div class="form-grid"><label class="full">Titel<input id="dlg-title" value="${esc(source ? source.title + (asCopy ? ' (Kopie)' : '') : '')}" maxlength="100" placeholder="z. B. En la zapatería" required></label></div><label class="textarea-label" for="import-text">Dein Dialog</label><textarea id="import-text" placeholder="A: ¡Hola! ¿Necesitas ayuda? | Hallo! Brauchst du Hilfe?&#10;B: Sí, busco unos zapatos. | Ja, ich suche Schuhe."></textarea><p class="dlg-format">Eine Zeile pro Satz: <strong>Sprecher: Spanisch | Deutsch</strong>. Das Deutsche ist optional, ohne es zeigt „Aus dem Kopf“ nur Anfangsbuchstaben. Zeilen ohne Sprecher werden übersprungen.</p><div id="import-error" class="form-error" role="alert" hidden></div><div class="dialog-footer"><span class="import-privacy">${icon('lock')}Deine Inhalte bleiben in deinem Browser.</span><button class="button primary" type="submit">Dialog speichern ${icon('check')}</button></div></form>`;
+    if (source) $('#import-text').value = C.serializeDialog(source);
+    $('#dlg-editor').addEventListener('submit', e => {
+      e.preventDefault();
+      try {
+        const { lines, skipped } = C.parseDialog($('#import-text').value);
+        const title = $('#dlg-title').value.trim(); if (!title) return importError('Bitte einen Titel eingeben.');
+        const old = source && !asCopy ? source : null;
+        const saved = C.validateDialog({ id: old?.id || C.uid(), title, description: old?.description || '', lines, progress: old?.progress });
+        if (old) data.dialogs[data.dialogs.indexOf(old)] = saved; else data.dialogs.push(saved);
+        dialogId = saved.id; save(); dialog.close(); drawDialog();
+        toast(`${lines.length} Zeilen gespeichert.${skipped ? ` ${skipped} ${skipped === 1 ? 'Zeile' : 'Zeilen'} ohne Sprecher übersprungen.` : ''}`);
+      } catch (error) { importError(error.message); }
+    });
+    dialog.showModal();
+  }
   function showSettings(duringRound = false) {
     const set = currentSet(), s = data.settings, dialog = $('#settings-dialog');
     dialog.innerHTML = `<div class="dialog-header"><div><h2 id="settings-heading">Dein Lernmodus</h2></div><button class="icon-button" data-close="settings-dialog" aria-label="Schließen">${icon('close')}</button></div><form id="settings-form"><fieldset><legend>Wie möchtest du üben?</legend><div class="setting-options">${[['adaptive', 'spark', 'Adaptiv', 'Erst auswählen, dann zweimal richtig schreiben.'], ['mc', 'layers', 'Multiple Choice', 'Die richtige Übersetzung aus Antworten wählen.'], ['written', 'keyboard', 'Nur schreiben', 'Direkt aus dem Gedächtnis antworten.']].map(([v, i, name, text]) => `<label class="radio-card"><input type="radio" name="mode" value="${v}" ${s.mode === v ? 'checked' : ''}>${icon(i)}<span><strong>${name}</strong><small>${text}</small></span></label>`).join('')}</div></fieldset><div class="form-grid"><label>Abfragerichtung<select name="direction"><option value="random" ${s.direction === 'random' ? 'selected' : ''}>Zufällig in beide Richtungen</option><option value="forward" ${s.direction === 'forward' ? 'selected' : ''}>${esc(set?.frontLang || 'Vorderseite')} → ${esc(set?.backLang || 'Rückseite')}</option><option value="reverse" ${s.direction === 'reverse' ? 'selected' : ''}>${esc(set?.backLang || 'Rückseite')} → ${esc(set?.frontLang || 'Vorderseite')}</option></select></label><label>Begriffe pro Runde<select name="roundSize">${[['5', '5 Begriffe'], ['10', '10 Begriffe'], ['20', '20 Begriffe'], ['all', 'Alle Begriffe']].map(([v, label]) => `<option value="${v}" ${s.roundSize === v ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div><label class="toggle-row"><span><strong>Akzente genau prüfen</strong><small>Zum Beispiel á statt a und ñ statt n verlangen.</small></span><input type="checkbox" name="accents" ${s.accents ? 'checked' : ''}></label><label class="toggle-row"><span><strong>Artikel dürfen fehlen</strong><small>„Kleidung“ gilt auch für „die Kleidung“.</small></span><input type="checkbox" name="articles" ${s.articles ? 'checked' : ''}></label><p class="form-help">Groß- und Kleinschreibung sowie Satzzeichen sind immer egal. Bei mehreren Übersetzungen reicht eine passende Variante.</p>${duringRound ? '<p class="import-warning">Beim Speichern beginnt eine neue Runde. Bereits beantwortete Fragen bleiben gespeichert.</p>' : ''}<div class="dialog-footer"><button class="button secondary" type="button" data-close="settings-dialog">Abbrechen</button><button class="button primary" type="submit">Einstellungen speichern ${icon('check')}</button></div></form>`;
@@ -278,12 +444,19 @@
       if (!sets.length) throw new Error('Diese Sicherung enthält keine Lernsets.');
       // Restore as copies. Existing sets and learning progress remain intact.
       for (const s of sets) if (data.sets.some(old => old.title === s.title)) s.title += ' (Import)';
-      data.sets.push(...sets); selectedId = sets[0].id; save(); $('#import-dialog').close(); drawLibrary(); toast(`${sets.length} Lernsets samt Fortschritt importiert.`);
+      data.sets.push(...sets); selectedId = sets[0].id;
+      for (const raw of Array.isArray(backup.dialogs) ? backup.dialogs : []) {
+        const builtIn = data.dialogs.find(d => d.seed && d.id === raw?.id);
+        if (builtIn) { builtIn.progress.best = Math.max(builtIn.progress.best, C.validateDialog(raw)?.progress.best || 0); continue; }
+        const copy = C.validateDialog(raw, false);
+        if (copy) { if (data.dialogs.some(d => d.title === copy.title)) copy.title += ' (Import)'; data.dialogs.push(copy); }
+      }
+      save(); $('#import-dialog').close(); drawLibrary(); toast(`${sets.length} Lernsets samt Fortschritt importiert.`);
     } catch (error) { importError(error.message); }
   }
   function download(name, text, type) { const blob = new Blob([text], { type }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000); }
   function exportSet() { const s = currentSet(); download(s.title.replace(/[<>:"/\\|?*]/g, '-') + '.txt', '\uFEFF' + C.serializeTerms(s.terms), 'text/plain;charset=utf-8'); toast('Vokabelliste exportiert.'); }
-  function exportBackup() { download(`wortwechsel-sicherung-${localDate()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sets: data.sets, settings: data.settings }, null, 2), 'application/json'); toast('Sicherung exportiert. Über „Neues Lernset“ wieder importieren.'); }
+  function exportBackup() { download(`wortwechsel-sicherung-${localDate()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sets: data.sets, dialogs: data.dialogs, settings: data.settings }, null, 2), 'application/json'); toast('Sicherung exportiert. Über „Neues Lernset“ wieder importieren.'); }
   function confirmAction(title, text, label, fn) {
     const d = $('#confirm-dialog');
     d.innerHTML = `<div class="dialog-header"><h2 id="confirm-heading">${esc(title)}</h2><button class="icon-button" data-close="confirm-dialog" aria-label="Schließen">${icon('close')}</button></div><p>${esc(text)}</p><div class="dialog-footer"><button class="button secondary" data-close="confirm-dialog">Abbrechen</button><button class="button primary" id="confirm-action">${esc(label)}</button></div>`;
@@ -294,7 +467,31 @@
     const btn = e.target.closest('[data-action]'); if (!btn || btn.disabled) return;
     const action = btn.dataset.action;
     if (btn.dataset.id) { selectedId = btn.dataset.id; save(); }
+    if (btn.dataset.dialog) dialogId = btn.dataset.dialog;
     switch (action) {
+      case 'dlg-list': return drawDialogs();
+      case 'dlg-open': return drawDialog();
+      case 'dlg-new': return openDialogEditor();
+      case 'dlg-edit': return openDialogEditor(currentDialog());
+      case 'dlg-role': dlgRole = btn.dataset.role; return drawDialog();
+      case 'dlg-start': return startDialog(Number(btn.dataset.level));
+      case 'dlg-skip': return gradeDialogLine(true);
+      case 'dlg-next': if (dlg?.answered) return nextDialogLine(); return;
+      case 'dlg-accept': {
+        // Whole sentences can be right in another wording, so the learner may overrule the comparison.
+        if (!dlg?.answered) return;
+        dlg.queue.pop(); dlg.missed.delete(dlg.current); applyDialogResult(true); save();
+        return nextDialogLine();
+      }
+      case 'dlg-accent': {
+        const input = dlgLastInput; if (!input?.isConnected || input.disabled) return;
+        input.setRangeText(btn.dataset.char, input.selectionStart, input.selectionEnd, 'end'); input.focus(); return;
+      }
+      case 'dlg-say': return speak([currentDialog().lines[Number(btn.dataset.line)].es]);
+      case 'dlg-say-all': return speak(currentDialog().lines.map(l => l.es));
+      case 'dlg-exit': return confirmAction('Übung verlassen?', 'Diese Stufe zählt erst, wenn du sie zu Ende machst.', 'Zum Dialog', drawDialog);
+      case 'dlg-reset': return confirmAction('Von vorne anfangen?', 'Der Stufen-Fortschritt dieses Dialogs wird zurückgesetzt. Der Text bleibt erhalten.', 'Fortschritt zurücksetzen', () => { currentDialog().progress = { best: 0, practiced: '' }; save(); drawDialog(); toast('Fortschritt zurückgesetzt.'); });
+      case 'dlg-delete': return confirmAction('Dialog löschen?', `„${currentDialog().title}“ wird auf diesem Gerät entfernt. Exportiere bei Bedarf vorher eine Sicherung.`, 'Dialog löschen', () => { data.dialogs = data.dialogs.filter(d => d.id !== dialogId); save(); drawDialogs(); toast('Dialog gelöscht.'); });
       case 'library': termSearch = ''; return drawLibrary();
       case 'import': return openImport();
       case 'open-set': return drawSet();
@@ -325,6 +522,7 @@
   });
   $('.brand').addEventListener('click', e => { e.preventDefault(); drawLibrary(); });
   $('[data-view="library"]').addEventListener('click', drawLibrary);
+  $('[data-view="dialogs"]').addEventListener('click', drawDialogs);
   $('#nav-practice').addEventListener('click', () => { if (view === 'learn' && session?.current) return; startLearning(); });
   $('#nav-import').addEventListener('click', () => openImport());
   $('#backup-btn').addEventListener('click', exportBackup);
@@ -332,6 +530,7 @@
   document.addEventListener('keydown', e => {
     if (e.ctrlKey || e.altKey || e.metaKey || document.querySelector('dialog[open]')) return;
     const input = /INPUT|TEXTAREA|SELECT/.test(e.target.tagName);
+    if (view === 'dialogs' && dlg?.answered && e.key === 'Enter' && !e.repeat && e.target.dataset?.action !== 'dlg-accept') { e.preventDefault(); return nextDialogLine(); }
     if (view === 'learn' && session?.current) {
       if (e.repeat) return;
       if (session.answered && e.key === 'Enter') { e.preventDefault(); return nextQuestion(); }
