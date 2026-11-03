@@ -86,3 +86,26 @@ test('choices are unique and a single-pair set still supports writing', () => {
   const one = { terms: [set.terms[0]] };
   assert.equal(C.buildQuestion(one, { termId: one.terms[0].id, reverse: false }, { mode: 'adaptive' }).mode, 'written');
 });
+
+test('article omission does not accept a wrong article or a spurious article', () => {
+  assert.ok(C.matches('vestido', 'el vestido'));
+  assert.ok(!C.matches('la vestido', 'el vestido'));
+  assert.ok(!C.matches('die tragen', 'tragen'));
+});
+test('multiline quoted TSV and CSV preserve cell contents through export', () => {
+  const pairs = [{ front: 'a\nb\nc', back: 'x\ty "quoted"' }];
+  const imported = C.parseImport(C.serializeTerms(pairs)).terms;
+  assert.deepEqual(imported.map(({front, back}) => ({front, back})), pairs);
+  const csv = C.parseImport('"one\ntwo\nthree","eins\nzwei\ndrei"');
+  assert.equal(csv.terms.length, 1);
+  assert.equal(csv.terms[0].back, 'eins\nzwei\ndrei');
+});
+test('distinct punctuation and case are preserved during duplicate removal', () => {
+  const input = [{front:'1.5',back:'decimal'}, {front:'15',back:'decimal'}, {front:'US',back:'country'}, {front:'us',back:'pronoun'}];
+  assert.equal(C.cleanPairs(input).terms.length, 4);
+});
+test('multiple choice excludes answers with overlapping accepted synonyms', () => {
+  const set = {terms: C.cleanPairs([{front:'a',back:'stark, kräftig'}, {front:'b',back:'kräftig, robust'}, {front:'c',back:'klein'}]).terms};
+  const question = C.buildQuestion(set, {termId:set.terms[0].id, reverse:false}, {mode:'mc'});
+  assert.deepEqual(new Set(question.options), new Set(['stark, kräftig', 'klein']));
+});

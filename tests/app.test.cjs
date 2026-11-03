@@ -104,3 +104,36 @@ test('single-term sets, settings, cancellation and confirmed deletion work', () 
   a.click('[data-action="delete"]'); assert.equal(a.data().sets.length, 2);
   a.click('#confirm-action'); assert.equal(a.data().sets.length, 1);
 });
+
+test('corrupt saved data is never replaced by the initial seed', () => {
+  const raw = '{"sets":broken-but-recoverable';
+  const store = new Map([['wortwechsel.v1', raw]]);
+  const a = app(store);
+  assert.equal(store.get('wortwechsel.v1'), raw);
+  a.click('[data-action="learn"]'); a.click('[data-action="dont-know"]');
+  assert.equal(store.get('wortwechsel.v1'), raw);
+  assert.equal(a.$('#storage-warning').hidden, false);
+});
+test('a stale tab cannot overwrite newer saved progress', () => {
+  const a = app();
+  const newer = a.data(); newer.sets[0].title = 'Newer tab changes';
+  const serialized = JSON.stringify(newer); a.store.set('wortwechsel.v1', serialized);
+  a.click('[data-action="open-set"]');
+  assert.equal(a.store.get('wortwechsel.v1'), serialized);
+  assert.match(a.$('#storage-warning').textContent, /anderer Tab/);
+});
+test('going back from import preview removes hidden required fields', () => {
+  const a = app(); a.click('[data-action="import"]');
+  a.$('#import-title').value = 'Test'; a.$('#import-text').value = 'a → b'; a.submit('#import-form');
+  a.click('[data-action="add-pair"]'); a.click('#import-back-btn');
+  assert.equal(a.$('#import-preview input[required]'), null);
+  a.$('#import-text').value = 'c → d'; a.submit('#import-form'); a.submit('#import-form');
+  assert.equal(a.data().sets.at(-1).terms[0].front, 'c');
+});
+test('JSON backup skips null entries without crashing and retains valid pairs', () => {
+  const a = app(); a.click('[data-action="import"]'); a.$('#import-title').value = 'Backup';
+  a.$('#import-text').value = JSON.stringify({sets:[{title:'Recovered', terms:[null,{front:'hi',back:'hallo'}]}]});
+  a.submit('#import-form');
+  assert.equal(a.data().sets.at(-1).title, 'Recovered');
+  assert.equal(a.data().sets.at(-1).terms.length, 1);
+});

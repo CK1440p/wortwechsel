@@ -40,8 +40,11 @@
   }
   function matches(answer, expected, options = {}) {
     if (!String(answer).trim()) return false;
-    const key = value => { const n = normalize(value, options.accents); return options.articles === false ? n : stripArticle(n); };
-    return variants(expected).some(v => key(v) === key(answer));
+    const actual = normalize(answer, options.accents);
+    return variants(expected).some(v => {
+      const full = normalize(v, options.accents);
+      return actual === full || (options.articles !== false && actual === stripArticle(full));
+    });
   }
   function csvRows(text, delimiter) {
     const rows = []; let row = [], cell = '', quoted = false;
@@ -57,8 +60,13 @@
         row.push(cell.trim()); if (row.some(Boolean)) rows.push(row); row = []; cell = '';
       } else cell += c;
     }
+    if (quoted) throw new Error('In der Datei fehlt ein schließendes Anführungszeichen.');
     row.push(cell.trim()); if (row.some(Boolean)) rows.push(row);
     return rows;
+  }
+  function serializeTerms(terms) {
+    const cell = s => /["\t\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    return terms.map(t => cell(t.front) + '\t' + cell(t.back)).join('\n');
   }
   function cleanPairs(pairs, initialWarnings = []) {
     const terms = [], seen = new Set(), warnings = [...initialWarnings]; let duplicates = 0, invalid = 0;
@@ -67,7 +75,7 @@
       const front = String(p.front ?? p.term ?? p[0] ?? '').trim();
       const back = String(p.back ?? p.definition ?? p[1] ?? '').trim();
       if (!front || !back || front.length > 2000 || back.length > 2000) { invalid++; continue; }
-      const key = normalize(front, true) + '\t' + normalize(back, true);
+      const key = JSON.stringify([front.normalize('NFC'), back.normalize('NFC')]);
       if (seen.has(key)) { duplicates++; continue; }
       seen.add(key); terms.push({ id: uid(), front, back });
     }
@@ -92,8 +100,11 @@
     const noise = /^(?:Deine Statistik|Wird gerade gelernt\s*\(\d+\)|Gemeistert\s*\(\d+\)|Noch nicht gelernt\s*\(\d+\)|Diese \d+ auswählen|Diese Begriffe lernst du gerade\..*|Diese Begriffe hast du richtig beantwortet!?|Diese Begriffe hast du noch nicht gelernt!?|Your stats|Learning\s*\(\d+\)|Mastered\s*\(\d+\)|Not studied\s*\(\d+\)|Select these \d+|Diese \d+ auswählen)$/i;
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !noise.test(l));
     if (!lines.length) throw new Error('Es wurden keine Begriffe gefunden.');
-    const candidates = ['\t', ';', ','].map(d => ({ d, rows: csvRows(lines.join('\n'), d) }));
-    const delimited = candidates.find(x => x.rows.filter(r => r.length >= 2).length >= Math.ceil(lines.length * 0.6));
+    const candidates = ['\t', ';', ','].map(d => {
+      try { return { d, rows: csvRows(quizlet ? lines.join('\n') : text, d) }; }
+      catch { return { d, rows: [] }; }
+    });
+    const delimited = candidates.find(x => x.rows.length && x.rows.filter(r => r.length >= 2).length >= Math.ceil(x.rows.length * 0.6));
     let pairs, warnings = [];
     if (delimited) {
       pairs = delimited.rows.map(row => ({ front: row[0], back: row.slice(1).join(delimited.d === ',' ? ', ' : ' / ') }));
@@ -153,10 +164,12 @@
     const expected = item.reverse ? term.front : term.back, prompt = item.reverse ? term.back : term.front;
     const seen = new Set([normalize(expected)]);
     const distractors = shuffle(set.terms.filter(t => t.id !== term.id), random).map(t => item.reverse ? t.front : t.back).filter(value => {
-      const n = normalize(value); if (seen.has(n) || matches(value, expected) || matches(expected, value)) return false; seen.add(n); return true;
+      const n = normalize(value);
+      if (seen.has(n) || variants(value).some(v => matches(v, expected)) || variants(expected).some(v => matches(v, value))) return false;
+      seen.add(n); return true;
     }).slice(0, 3);
     if (!distractors.length) mode = 'written';
     return { ...item, term, expected, prompt, mode, options: shuffle([expected, ...distractors], random) };
   }
-  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion };
+  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion };
 });
