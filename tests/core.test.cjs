@@ -195,3 +195,25 @@ test('part progress survives validation and merging', () => {
   const merged = C.mergeStates({ sets: [], dialogs: [a] }, { sets: [], dialogs: [b] });
   assert.deepEqual(merged.dialogs[0].progress.parts, { '0-4': 2, '5-9': 4, '10-13': 3 }); assert.equal(merged.dialogs[0].progress.best, 2);
 });
+
+const demoTable = { groups: [{ label: 'm', columns: ['sg', 'pl'] }, { label: 'f', columns: ['sg', 'pl'] }], rows: [0, 1, 2].map(r => ({ label: `r${r}`, cells: [0, 1, 2, 3].map(c => `w${r}${c}`) })), sentences: [{ answer: 'Esta' }, { answer: 'Ese' }] };
+test('grammarGaps hides 4, 8, all cells, then the sentences', () => {
+  for (const [level, n] of [[1, 4], [2, 8], [3, 12]]) {
+    const gaps = C.grammarGaps(demoTable, level);
+    assert.equal(gaps.length, n); assert.equal(new Set(gaps.map(g => g.key)).size, n);
+  }
+  assert.deepEqual(C.grammarGaps(demoTable, 4, () => 0.999).map(g => g.answer).sort(), ['Ese', 'Esta']);
+  assert.equal(C.grammarCells(demoTable)[6].answer, 'w12'); assert.equal(C.grammarCells(demoTable)[6].label, 'f sg, r1');
+});
+test('checkGap ignores case, reports accent slips and rejects other forms', () => {
+  assert.equal(C.checkGap(' ESTA ', 'Esta'), 'right');
+  assert.equal(C.checkGap('ésta', 'esta'), 'slip');
+  assert.equal(C.checkGap('ésta', 'esta', true), 'wrong');
+  assert.equal(C.checkGap('este', 'esta'), 'wrong'); assert.equal(C.checkGap('', 'esta'), 'wrong');
+});
+test('grammar progress merges to the higher stage and survives junk', () => {
+  const merged = C.mergeStates({ sets: [], grammar: { a: { best: 1, practiced: '2026-11-04' }, b: { best: 3 } } }, { sets: [], grammar: { a: { best: 2, practiced: '2026-11-01' }, c: { best: 4 } } });
+  assert.deepEqual(merged.grammar, { c: { best: 4, practiced: '' }, a: { best: 2, practiced: '2026-11-04' }, b: { best: 3, practiced: '' } });
+  assert.deepEqual(C.mergeStates({ sets: [] }, { sets: [] }).grammar, {});
+  assert.deepEqual(C.validateGrammarProgress('x'), {}); assert.deepEqual(C.validateGrammarProgress({ a: { best: 99 } }), { a: { best: 4, practiced: '' } });
+});

@@ -308,7 +308,32 @@
       match.progress = { best: Math.max(Number(match.progress?.best) || 0, Number(dialog.progress?.best) || 0), practiced: [match.progress?.practiced || '', dialog.progress?.practiced || ''].sort().at(-1), parts };
     }
     out.dialogs = dialogs;
+    const grammar = validateGrammarProgress(other?.grammar);
+    for (const [id, p] of Object.entries(validateGrammarProgress(base?.grammar))) grammar[id] = { best: Math.max(grammar[id]?.best || 0, p.best), practiced: [grammar[id]?.practiced || '', p.practiced].sort().at(-1) };
+    out.grammar = grammar;
     return out;
+  }
+  // Grammar tables. A gap is one field to fill: a table cell or the missing word of a sentence.
+  const GRAMMAR_GAPS = { 1: 4, 2: 8 };
+  function grammarColumns(table) { return table.groups.flatMap(group => group.columns.map(column => ({ group: group.label, column }))); }
+  function grammarCells(table) {
+    const columns = grammarColumns(table);
+    return table.rows.flatMap((row, r) => row.cells.map((answer, c) => ({ key: `r${r}c${c}`, answer, label: `${columns[c].group} ${columns[c].column}, ${row.label}` })));
+  }
+  function grammarGaps(table, level, random = Math.random) {
+    if (level >= 4) return shuffle(table.sentences.map((s, i) => ({ key: `s${i}`, answer: s.answer, label: 'Fehlendes Wort' })), random);
+    const cells = grammarCells(table);
+    return level === 3 ? cells : shuffle(cells, random).slice(0, GRAMMAR_GAPS[level]);
+  }
+  // Same rule as dialogues: a wrong accent only counts as wrong when accent checking is on.
+  function checkGap(given, answer, accents = false) {
+    if (normalize(given, true) === normalize(answer, true)) return 'right';
+    return !accents && normalize(given) === normalize(answer) ? 'slip' : 'wrong';
+  }
+  function validateGrammarProgress(raw) {
+    const stage = value => Math.min(4, Math.max(0, Math.trunc(Number(value)) || 0));
+    const entries = Object.entries(raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}).slice(0, 100);
+    return Object.fromEntries(entries.map(([id, p]) => [String(id).slice(0, 60), { best: stage(p?.best), practiced: typeof p?.practiced === 'string' ? p.practiced.slice(0, 10) : '' }]));
   }
   function dialogSpeakers(dialog) { return [...new Set(dialog.lines.map(l => l.speaker))]; }
   // Lines stay in dialogue order: the order itself is part of what has to be learned.
@@ -318,5 +343,5 @@
     const out = all.filter(i => role === 'all' || dialog.lines[i].speaker === role);
     return out.length ? out : all;
   }
-  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, mergeStates, dialogParts, dialogSpeakers, dialogQueue };
+  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, mergeStates, dialogParts, dialogSpeakers, dialogQueue, grammarColumns, grammarCells, grammarGaps, checkGap, validateGrammarProgress };
 });

@@ -292,3 +292,72 @@ test('the test brief can cover one part', () => {
   boxes.forEach(b => { b.checked = true; }); a.submit('#dlg-check-form');
   assert.equal(a.data().dialogs[1].progress.parts['10-13'], 4); assert.equal(a.data().dialogs[1].progress.best, 0);
 });
+
+function solutionFor(a, key) {
+  const table = a.window.WWGrammarSeed[0];
+  const m = key.match(/^r(\d)c(\d)$/);
+  return m ? table.rows[m[1]].cells[m[2]] : table.sentences[key.slice(1)].answer;
+}
+function fillGrammar(a, wrongKeys = []) {
+  for (const field of a.document.querySelectorAll('.gram-input:not([readonly])')) field.value = wrongKeys.includes(field.dataset.gap) ? 'nada' : solutionFor(a, field.dataset.gap);
+  a.submit('#gram-form');
+}
+test('the worksheet table matches the book and every cell has a sentence', () => {
+  const a = app(), table = a.window.WWGrammarSeed[0];
+  assert.deepEqual(JSON.parse(JSON.stringify(table.rows.map(r => r.cells))), [['este', 'estos', 'esta', 'estas'], ['ese', 'esos', 'esa', 'esas'], ['aquel', 'aquellos', 'aquella', 'aquellas']]);
+  assert.deepEqual([...table.sentences.map(s => s.answer.toLowerCase())].sort(), [...table.rows.flatMap(r => [...r.cells])].sort());
+  const place = { aquí: 0, ahí: 1, allí: 2 };
+  for (const s of table.sentences) {
+    const row = place[s.after.match(/de (aquí|ahí|allí)/)[1]];
+    assert.ok(table.rows[row].cells.includes(s.answer.toLowerCase()), `${s.answer}${s.after}`);
+  }
+});
+test('grammar: all stages pass, progress unlocks and survives reload', () => {
+  const a = app();
+  a.click('[data-view="grammar"]'); a.click('.dialog-card');
+  assert.match(a.$('.gram-table').textContent, /aquellos/);
+  assert.equal(a.document.querySelectorAll('.dlg-stage').length, 4); assert.ok(a.$('.dlg-stage.next[data-level="1"]'));
+  a.click('[data-action="gram-start"][data-level="1"]');
+  for (const [level, n] of [[1, 4], [2, 8], [3, 12], [4, 12]]) {
+    assert.equal(a.document.querySelectorAll('.gram-input').length, n, `stage ${level}`);
+    if (level < 4) assert.equal(a.document.querySelectorAll('.gram-given').length, 12 - n);
+    fillGrammar(a);
+    assert.match(a.text(), new RegExp(`Stufe ${level} geschafft`)); assert.equal(a.data().grammar['pronombres-demostrativos'].best, level);
+    if (level < 4) a.click(`[data-action="gram-start"][data-level="${level + 1}"]`);
+  }
+  assert.ok(Object.values(a.data().history).reduce((n, v) => n + v, 0) >= 36);
+  const b = app(a.store);
+  b.click('[data-view="grammar"]'); assert.match(b.text(), /Alle Stufen geschafft/);
+});
+test('grammar: wrong cells show the answer, stay open until written, and block the stage below 80 %', () => {
+  const a = app();
+  a.click('[data-view="grammar"]'); a.click('.dialog-card'); a.click('[data-action="gram-start"][data-level="3"]');
+  const wrong = ['r0c0', 'r1c1', 'r2c2'];
+  fillGrammar(a, wrong);
+  assert.equal(a.$('.gram-input[data-gap="r2c2"]').className.includes('is-wrong'), true);
+  assert.equal(a.$('[data-solution="r2c2"]').textContent, 'aquella'); assert.equal(a.$('#gram-count').textContent, '9 / 12 Felder richtig');
+  a.submit('#gram-form'); assert.equal(a.$('#gram-count').textContent, '9 / 12 Felder richtig', 'a second submit while reviewing changes nothing');
+  a.click('[data-action="gram-retry"]');
+  assert.equal(a.$('.gram-input[data-gap="r2c2"]').value, ''); assert.equal(a.$('[data-solution="r2c2"]').textContent, '');
+  assert.equal(a.document.querySelectorAll('.gram-input:not([readonly])').length, 3);
+  fillGrammar(a);
+  assert.match(a.text(), /Stufe 3 durchgespielt/); assert.match(a.text(), /9 \/ 12/); assert.match(a.$('.result-review').textContent, /aquella/);
+  assert.equal(a.data().grammar['pronombres-demostrativos'].best, 0);
+});
+test('grammar: leaving a round frees sync and old saves gain the section', () => {
+  const store = new Map([['wortwechsel.v1', JSON.stringify({ sets: [], settings: {}, history: {} })]]);
+  const a = app(store);
+  a.click('[data-view="grammar"]'); a.click('.dialog-card'); a.click('[data-action="gram-start"][data-level="1"]');
+  assert.equal(a.window.WWApp.canApply(), false);
+  a.click('[data-view="library"]');
+  assert.equal(a.window.WWApp.canApply(), true);
+  assert.deepEqual(a.data().grammar, {});
+});
+test('backup restore keeps the higher grammar stage and remote data can bring progress', () => {
+  const id = 'pronombres-demostrativos', a = app();
+  a.window.WWApp.apply({ ...a.data(), grammar: { [id]: { best: 2, practiced: '2026-11-04' } } });
+  assert.equal(a.data().grammar[id].best, 2);
+  const restore = best => { a.click('[data-view="library"]'); a.click('[data-action="import"]'); a.$('#import-text').value = JSON.stringify({ version: 1, sets: [{ title: 'B', terms: [{ front: 'a', back: 'b' }] }], grammar: { [id]: { best } } }); a.submit('#import-form'); };
+  restore(1); assert.equal(a.data().grammar[id].best, 2);
+  restore(3); assert.equal(a.data().grammar[id].best, 3);
+});

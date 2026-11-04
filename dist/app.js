@@ -28,6 +28,7 @@
     book: '<path d="M12 6C8 3 4 4 2 5v15c4-2 7-1 10 1 3-2 6-3 10-1V5c-2-1-6-2-10 1Zm0 0v15"/>',
     chat: '<path d="M4 5h16v11H9l-5 4Z"/><path d="M8 9h8m-8 3h5"/>',
     sound: '<path d="M4 9v6h4l5 4V5L8 9Z"/><path d="M16.5 9a4 4 0 0 1 0 6"/>',
+    table: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 10h18M3 15h18M9 4v16"/>',
   };
   const icon = (name, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.book}</svg>`;
   function hydrateIcons() { document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon); el.removeAttribute('data-icon'); }); }
@@ -71,6 +72,7 @@
     return [...seeds, ...valid.filter(d => !seeds.some(s => s.id === d.id))];
   }
   data.dialogs = mergeDialogs(data.dialogs);
+  data.grammar = C.validateGrammarProgress(data.grammar);
   let selectedId = data.selectedId || data.sets[0]?.id, view = 'library', session = null, flash = null, termSearch = '', librarySearch = '';
   let importDraft = null, importTarget = null, importRaw = '', importWarnings = [], toastTimer, fileLoadVersion = 0;
   const currentSet = () => data.sets.find(s => s.id === selectedId) || data.sets[0];
@@ -99,6 +101,7 @@
     $('#set-count').textContent = data.sets.length;
     document.querySelectorAll('.nav-item[data-view]').forEach(el => el.classList.toggle('active', view === el.dataset.view));
     $('#nav-practice').classList.toggle('active', view === 'learn');
+    if (view !== 'grammar') gram = null;
     stopSpeech();
     hydrateIcons();
   }
@@ -373,6 +376,109 @@
       dlg = null;
     });
   }
+  // ---- Grammar tables: fill in the table with fewer and fewer cells given, then use the forms in sentences. ----
+  const GRAM_STAGES = [
+    { level: 1, name: 'Ein paar Lücken', text: '4 Felder fehlen, der Rest der Tabelle hilft dir.' },
+    { level: 2, name: 'Viele Lücken', text: '8 Felder fehlen, nur 4 bleiben stehen.' },
+    { level: 3, name: 'Aus dem Kopf', text: 'Die ganze Tabelle ist leer, du füllst alle 12 Felder.' },
+    { level: 4, name: 'In Sätzen', text: 'Setz die richtige Form ein, wie in der Übung im Buch.' },
+  ];
+  let grammarId = null, gram = null;
+  const grammarTables = () => window.WWGrammarSeed || [];
+  const currentTable = () => grammarTables().find(t => t.id === grammarId);
+  const grammarProgress = id => data.grammar[id] || { best: 0, practiced: '' };
+  function grammarTableHtml(table, cell) {
+    const columns = C.grammarColumns(table);
+    return `<div class="gram-table-wrap"><table class="gram-table"><caption>${esc(table.title)}</caption><thead><tr><td class="gram-corner"></td>${table.groups.map(g => `<th scope="colgroup" colspan="${g.columns.length}" lang="es">${esc(g.label)}</th>`).join('')}</tr><tr><td class="gram-corner"></td>${columns.map(c => `<th scope="col" class="gram-col" lang="es">${esc(c.column)}</th>`).join('')}</tr></thead><tbody>${table.rows.map((row, r) => `<tr><th scope="row"><span lang="es">${esc(row.label)} <small>(${esc(row.sub)})</small></span><small class="gram-de">${esc(row.de)}</small></th>${row.cells.map((answer, c) => `<td lang="es">${cell(answer, `r${r}c${c}`)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  }
+  function drawGrammarList() {
+    view = 'grammar'; session = null; flash = null; gram = null; renderShell('Grammatik');
+    $('#main').innerHTML = `<section class="page-intro"><div><h1>Grammatik<span class="blue-dot">.</span></h1><p>Tabellen erst ansehen, dann mit immer weniger Hilfe selbst ausfüllen.</p></div></section><div class="dialog-grid">${grammarTables().map(t => { const best = grammarProgress(t.id).best; return `<button class="dialog-card" data-action="gram-open" data-table="${esc(t.id)}"><strong lang="es">${esc(t.title)}</strong><small>${esc(t.description)}</small><small>${C.grammarCells(t).length} Felder · ${stageLabel(best)}</small><span class="mini-progress"><span style="width:${best / 4 * 100}%"></span></span></button>`; }).join('')}</div>`;
+  }
+  function drawGrammar() {
+    const t = currentTable(); if (!t) return drawGrammarList();
+    view = 'grammar'; session = null; flash = null; gram = null; renderShell(t.title);
+    const { best, practiced } = grammarProgress(t.id), nextLevel = Math.min(4, best + 1);
+    const advice = best >= 4 ? practiced === localDate() ? 'Für heute reicht das. Morgen nochmal Stufe 3 oder 4, dann bleibt es hängen.' : 'Kurz wiederholen: Stufe 3 oder 4.' : 'Mach am besten weiter bei der markierten Stufe.';
+    $('#main').innerHTML = `<button class="back-link" data-action="gram-list">${icon('back')} Alle Tabellen</button><section class="set-page-heading"><div class="set-emoji big">${icon('table')}</div><div><div class="eyebrow">${C.grammarCells(t).length} FELDER · ${esc(stageLabel(best).toUpperCase())}</div><h1 lang="es">${esc(t.title)}</h1></div>${best ? `<button class="icon-button" data-action="gram-reset" aria-label="Fortschritt zurücksetzen" title="Fortschritt zurücksetzen">${icon('trash')}</button>` : ''}</section>
+      <section class="dlg-section"><h2>Üben</h2><p>${advice}</p><div class="dlg-stages">${GRAM_STAGES.map(s => `<button class="dlg-stage ${s.level === nextLevel && best < 4 ? 'next' : ''}" data-action="gram-start" data-level="${s.level}"><span class="dlg-stage-top">STUFE ${s.level}${best >= s.level ? icon('check') : ''}</span><strong>${s.name}</strong><small>${s.text}</small></button>`).join('')}</div></section>
+      <section class="dlg-section"><h2>Ansehen</h2><p>${esc(t.tip)}</p>${grammarTableHtml(t, answer => esc(answer))}</section>`;
+  }
+  function startGrammar(level) {
+    const t = currentTable(); if (!t) return drawGrammarList();
+    const gaps = C.grammarGaps(t, level);
+    gram = { level, gaps, open: gaps.map(g => g.key), wrong: [], missed: new Set(), slips: new Set(), firstTry: 0, attempts: 0, checked: 0 };
+    drawGrammarRound();
+  }
+  const gapInput = gap => `<input class="dlg-blank gram-input" data-gap="${gap.key}" aria-label="${esc(gap.label)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="next">`;
+  function drawGrammarRound() {
+    const t = currentTable(), stage = GRAM_STAGES[gram.level - 1], byKey = new Map(gram.gaps.map(g => [g.key, g]));
+    const body = gram.level === 4
+      ? `<ol class="gram-sentences">${gram.gaps.map(gap => { const s = t.sentences[Number(gap.key.slice(1))]; return `<li><div class="gram-sentence" lang="es">${gapInput(gap)}${esc(s.after)}<span class="gram-solution" data-solution="${gap.key}" hidden></span></div><small lang="de">${esc(s.de)}</small></li>`; }).join('')}</ol>`
+      : grammarTableHtml(t, (answer, key) => byKey.has(key) ? `${gapInput(byKey.get(key))}<span class="gram-solution" data-solution="${key}" hidden></span>` : `<span class="gram-given">${esc(answer)}</span>`);
+    $('#main').innerHTML = `<section class="learning-shell gram-shell"><div class="learning-top"><button class="back-link" data-action="gram-exit">${icon('back')}Tabelle</button><span class="learning-set-name">Stufe ${gram.level} · ${stage.name}</span><span></span></div><div class="round-progress"><div><strong lang="es">${esc(t.title)}</strong><span id="gram-count"></span></div><div class="mini-progress"><span id="gram-bar"></span></div></div><div class="dlg-card"><form id="gram-form" novalidate>${body}<div class="write-actions"><span></span><button type="submit" class="button primary" id="gram-submit">Prüfen ${icon('arrow')}</button></div></form><div id="gram-feedback" class="answer-feedback" role="status" aria-live="polite"></div></div><div class="shortcut-hint"><kbd>Enter</kbd> Nächstes leeres Feld, am Ende Prüfen</div></section>`;
+    $('#gram-form').addEventListener('submit', e => { e.preventDefault(); if (!gram.wrong.length) gradeGrammar(); });
+    $('#gram-form').addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || !e.target.matches('.gram-input')) return;
+      const inputs = [...document.querySelectorAll('.gram-input:not([readonly])')], at = inputs.indexOf(e.target);
+      const empty = [...inputs.slice(at + 1), ...inputs.slice(0, at)].find(i => !i.value.trim());
+      if (empty) { e.preventDefault(); empty.focus({ preventScroll: true }); }
+    });
+    updateGrammarCount();
+    requestAnimationFrame(() => document.querySelector('.gram-input')?.focus({ preventScroll: true }));
+  }
+  function updateGrammarCount() {
+    const total = gram.gaps.length, done = total - gram.open.length;
+    $('#gram-count').textContent = `${done} / ${total} Felder richtig`;
+    $('#gram-bar').style.width = `${Math.round(done / total * 100)}%`;
+  }
+  const gapField = key => document.querySelector(`.gram-input[data-gap="${key}"]`);
+  function gradeGrammar() {
+    const first = !gram.checked, wrong = [];
+    gram.checked++;
+    for (const key of gram.open) {
+      const gap = gram.gaps.find(g => g.key === key), field = gapField(key), result = C.checkGap(field.value, gap.answer, data.settings.accents);
+      if (field.value.trim()) gram.attempts++;
+      if (result === 'slip') gram.slips.add(gap.answer);
+      field.setAttribute('readonly', '');
+      if (result === 'wrong') { wrong.push(key); gram.missed.add(key); field.classList.add('is-wrong'); }
+      else {
+        field.classList.add('is-right');
+        if (first) gram.firstTry++;
+        data.history[localDate()] = (data.history[localDate()] || 0) + 1;
+      }
+    }
+    gram.open = wrong; gram.wrong = wrong;
+    save(); updateGrammarCount();
+    if (!wrong.length) return drawGrammarResult();
+    wrong.forEach(key => { const s = document.querySelector(`[data-solution="${key}"]`); s.textContent = gram.gaps.find(g => g.key === key).answer; s.hidden = false; });
+    $('#gram-submit').hidden = true;
+    const box = $('#gram-feedback'); box.className = 'answer-feedback visible incorrect';
+    box.innerHTML = `<div class="feedback-title">${icon('book')}<strong>${wrong.length === 1 ? '1 Feld stimmt noch nicht' : `${wrong.length} Felder stimmen noch nicht`}</strong></div><p>Die richtige Form steht jetzt beim Feld. Schau sie dir an, dann schreibst du sie selbst.</p><div class="dlg-feedback-actions"><button type="button" class="button primary" data-action="gram-retry">Nochmal schreiben ${icon('arrow')}</button></div>`;
+    box.querySelector('button').focus({ preventScroll: true });
+  }
+  function retryGrammar() {
+    gram.wrong.forEach(key => {
+      const field = gapField(key), s = document.querySelector(`[data-solution="${key}"]`);
+      field.value = ''; field.removeAttribute('readonly'); field.classList.remove('is-wrong');
+      s.hidden = true; s.textContent = '';
+    });
+    gram.wrong = [];
+    $('#gram-submit').hidden = false;
+    const box = $('#gram-feedback'); box.className = 'answer-feedback'; box.innerHTML = '';
+    gapField(gram.open[0]).focus({ preventScroll: true });
+  }
+  function drawGrammarResult() {
+    const t = currentTable(), total = gram.gaps.length, passed = gram.firstTry / total >= PASS_RATIO, level = gram.level, progress = grammarProgress(t.id);
+    data.grammar[t.id] = { best: passed ? Math.max(progress.best, level) : progress.best, practiced: localDate() };
+    save();
+    const missed = gram.gaps.filter(g => gram.missed.has(g.key)), slips = [...gram.slips];
+    const start = (label, target, cls) => `<button class="button ${cls}" data-action="gram-start" data-level="${target}">${label}</button>`;
+    const buttons = passed && level < 4 ? [start(`Weiter zu Stufe ${level + 1} ${icon('arrow')}`, level + 1, 'primary'), start(`Stufe ${level} wiederholen`, level, 'secondary')] : [start(`${level === 4 ? 'Nochmal üben' : `Stufe ${level} wiederholen`} ${icon('arrow')}`, level, 'primary')];
+    const note = passed ? level === 4 ? 'Du kannst die Formen auch in Sätzen benutzen.' : 'Bereit für weniger Hilfe.' : 'Noch unter 80 % beim ersten Versuch: Wiederhole diese Stufe, bevor du weitergehst.';
+    $('#main').innerHTML = `<section class="result-page"><div class="result-icon">${icon('check')}<span>✦</span></div><h1>Stufe ${level} ${passed ? 'geschafft' : 'durchgespielt'}<span class="blue-dot">.</span></h1><p>${note}</p><div class="result-stats"><div><strong>${gram.firstTry} / ${total}</strong><span>beim ersten Versuch</span></div><div><strong>${gram.checked}</strong><span>${gram.checked === 1 ? 'Durchgang' : 'Durchgänge'}</span></div><div><strong>${missed.length}</strong><span>${missed.length === 1 ? 'Feld wiederholt' : 'Felder wiederholt'}</span></div></div>${slips.length ? `<p class="dlg-accent-note">Zählt als richtig, im Test aber auf den Akzent achten: ${esc(slips.join(', '))}</p>` : ''}${missed.length ? `<div class="result-review"><h3>Wiederholte Felder</h3>${missed.map(g => `<div><span lang="es">${esc(g.answer)}</span>${g.key.startsWith('r') ? `<span>${esc(g.label)}</span>` : ''}</div>`).join('')}</div>` : '<div class="perfect-note">Keine Fehler.</div>'}<div class="result-actions">${buttons.join('')}<button class="text-button" data-action="gram-open">Zurück zur Tabelle</button></div></section>`;
+    gram = null;
+  }
   const DIALOG_PROMPT = 'Schreib einen Dialog auf Spanisch zum Thema [Thema hier eintragen]. Gib nur den Dialog aus, ohne Überschrift und ohne Erklärung. Schreib jede Zeile genau so:\nSprecher: spanischer Satz | deutsche Übersetzung\n\nBeispiel:\nA: ¡Hola! ¿Qué tal? | Hallo! Wie geht es dir?\nB: Muy bien, gracias. | Sehr gut, danke.';
   let dlgEditorSource = null, dlgDraft = null, dlgSkipped = [];
   function openDialogEditor(source = null) {
@@ -500,12 +606,13 @@
         const copy = C.validateDialog(raw, false);
         if (copy) { if (data.dialogs.some(d => d.title === copy.title)) copy.title += ' (Import)'; data.dialogs.push(copy); }
       }
+      data.grammar = C.mergeStates({ grammar: data.grammar }, { grammar: backup.grammar }).grammar;
       save(); $('#import-dialog').close(); drawLibrary(); toast(`${sets.length} Lernsets samt Fortschritt importiert.`);
     } catch (error) { importError(error.message); }
   }
   function download(name, text, type) { const blob = new Blob([text], { type }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000); }
   function exportSet() { const s = currentSet(); download(s.title.replace(/[<>:"/\\|?*]/g, '-') + '.txt', '\uFEFF' + C.serializeTerms(s.terms), 'text/plain;charset=utf-8'); toast('Vokabelliste exportiert.'); }
-  function exportBackup() { download(`wortwechsel-sicherung-${localDate()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sets: data.sets, dialogs: data.dialogs, settings: data.settings }, null, 2), 'application/json'); toast('Sicherung exportiert. Über „Neues Lernset“ wieder importieren.'); }
+  function exportBackup() { download(`wortwechsel-sicherung-${localDate()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sets: data.sets, dialogs: data.dialogs, grammar: data.grammar, settings: data.settings }, null, 2), 'application/json'); toast('Sicherung exportiert. Über „Neues Lernset“ wieder importieren.'); }
   function confirmAction(title, text, label, fn) {
     const d = $('#confirm-dialog');
     d.innerHTML = `<div class="dialog-header"><h2 id="confirm-heading">${esc(title)}</h2><button class="icon-button" data-close="confirm-dialog" aria-label="Schließen">${icon('close')}</button></div><p>${esc(text)}</p><div class="dialog-footer"><button class="button secondary" data-close="confirm-dialog">Abbrechen</button><button class="button primary" id="confirm-action">${esc(label)}</button></div>`;
@@ -516,8 +623,15 @@
     const btn = e.target.closest('[data-action]'); if (!btn || btn.disabled) return;
     const action = btn.dataset.action;
     if (btn.dataset.id) { selectedId = btn.dataset.id; save(); }
+    if (btn.dataset.table) grammarId = btn.dataset.table;
     if (btn.dataset.dialog) { if (dialogId !== btn.dataset.dialog) dlgPart = 'all'; dialogId = btn.dataset.dialog; }
     switch (action) {
+      case 'gram-list': return drawGrammarList();
+      case 'gram-open': return drawGrammar();
+      case 'gram-start': return startGrammar(Number(btn.dataset.level));
+      case 'gram-retry': return retryGrammar();
+      case 'gram-exit': return confirmAction('Übung verlassen?', 'Diese Stufe zählt erst, wenn du sie zu Ende machst.', 'Zur Tabelle', drawGrammar);
+      case 'gram-reset': return confirmAction('Von vorne anfangen?', 'Der Stufen-Fortschritt dieser Tabelle wird zurückgesetzt.', 'Fortschritt zurücksetzen', () => { delete data.grammar[grammarId]; save(); drawGrammar(); toast('Fortschritt zurückgesetzt.'); });
       case 'dlg-list': return drawDialogs();
       case 'dlg-open': return drawDialog();
       case 'dlg-new': return openDialogEditor();
@@ -580,6 +694,7 @@
   $('.brand').addEventListener('click', e => { e.preventDefault(); drawLibrary(); });
   $('[data-view="library"]').addEventListener('click', drawLibrary);
   $('[data-view="dialogs"]').addEventListener('click', drawDialogs);
+  $('[data-view="grammar"]').addEventListener('click', drawGrammarList);
   $('#nav-practice').addEventListener('click', () => { if (view === 'learn' && session?.current) return; startLearning(); });
   $('#nav-import').addEventListener('click', () => openImport());
   $('#backup-btn').addEventListener('click', exportBackup);
@@ -603,9 +718,9 @@
   window.WWApp = {
     toast,
     snapshot: () => data,
-    canApply: () => !storageBlocked && !session?.current && !dlg && !document.querySelector('dialog[open]'),
+    canApply: () => !storageBlocked && !session?.current && !dlg && !gram && !document.querySelector('dialog[open]'),
     apply(raw) {
-      const next = hydrate(raw); next.dialogs = mergeDialogs(next.dialogs);
+      const next = hydrate(raw); next.dialogs = mergeDialogs(next.dialogs); next.grammar = C.validateGrammarProgress(next.grammar);
       data = next;
       if (!data.sets.some(s => s.id === selectedId)) selectedId = data.selectedId && data.sets.some(s => s.id === data.selectedId) ? data.selectedId : data.sets[0]?.id;
       applyingRemote = true; save(); applyingRemote = false;
@@ -613,6 +728,8 @@
       else if (view === 'set') drawSet();
       else if (view === 'dialogs' && document.querySelector('.dlg-transcript')) drawDialog();
       else if (view === 'dialogs' && document.querySelector('.dialog-grid')) drawDialogs();
+      else if (view === 'grammar' && document.querySelector('.dialog-grid')) drawGrammarList();
+      else if (view === 'grammar' && document.querySelector('.gram-table')) drawGrammar();
       else renderShell();
     },
   };
