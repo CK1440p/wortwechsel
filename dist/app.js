@@ -381,7 +381,7 @@
     { level: 1, name: 'Ein paar Lücken', text: '4 Felder fehlen, der Rest der Tabelle hilft dir.' },
     { level: 2, name: 'Viele Lücken', text: '8 Felder fehlen, nur 4 bleiben stehen.' },
     { level: 3, name: 'Aus dem Kopf', text: 'Die ganze Tabelle ist leer, du füllst alle 12 Felder.' },
-    { level: 4, name: 'In Sätzen', text: 'Setz die richtige Form ein, wie in der Übung im Buch.' },
+    { level: 4, name: 'In Sätzen', text: 'Jede Runde 12 andere Sätze, jede Form kommt einmal dran.' },
   ];
   let grammarId = null, gram = null;
   const grammarTables = () => window.WWGrammarSeed || [];
@@ -414,7 +414,7 @@
   function drawGrammarRound() {
     const t = currentTable(), stage = GRAM_STAGES[gram.level - 1], byKey = new Map(gram.gaps.map(g => [g.key, g]));
     const body = gram.level === 4
-      ? `<ol class="gram-sentences">${gram.gaps.map(gap => { const s = t.sentences[Number(gap.key.slice(1))]; return `<li><div class="gram-sentence" lang="es">${gapInput(gap)}${esc(s.after)}<span class="gram-solution" data-solution="${gap.key}" hidden></span></div><small lang="de">${esc(s.de)}</small></li>`; }).join('')}</ol>`
+      ? `<ol class="gram-sentences">${gram.gaps.map(gap => { const s = t.sentences[Number(gap.key.slice(1))]; return `<li><div class="gram-sentence" lang="es">${esc(s.before || '')}${gapInput(gap)}${esc(s.after)}<span class="gram-solution" data-solution="${gap.key}" hidden></span></div><small lang="de">${esc(s.de)}</small></li>`; }).join('')}</ol>`
       : grammarTableHtml(t, (answer, key) => byKey.has(key) ? `${gapInput(byKey.get(key))}<span class="gram-solution" data-solution="${key}" hidden></span>` : `<span class="gram-given">${esc(answer)}</span>`);
     $('#main').innerHTML = `<section class="learning-shell gram-shell"><div class="learning-top"><button class="back-link" data-action="gram-exit">${icon('back')}Tabelle</button><span class="learning-set-name">Stufe ${gram.level} · ${stage.name}</span><span></span></div><div class="round-progress"><div><strong lang="es">${esc(t.title)}</strong><span id="gram-count"></span></div><div class="mini-progress"><span id="gram-bar"></span></div></div><div class="dlg-card"><form id="gram-form" novalidate>${body}<div class="write-actions"><span></span><button type="submit" class="button primary" id="gram-submit">Prüfen ${icon('arrow')}</button></div></form><div id="gram-feedback" class="answer-feedback" role="status" aria-live="polite"></div></div><div class="shortcut-hint"><kbd>Enter</kbd> Nächstes leeres Feld, am Ende Prüfen</div></section>`;
     $('#gram-form').addEventListener('submit', e => { e.preventDefault(); if (!gram.wrong.length) gradeGrammar(); });

@@ -305,7 +305,18 @@ function fillGrammar(a, wrongKeys = []) {
 test('the worksheet table matches the book and every cell has a sentence', () => {
   const a = app(), table = a.window.WWGrammarSeed[0];
   assert.deepEqual(JSON.parse(JSON.stringify(table.rows.map(r => r.cells))), [['este', 'estos', 'esta', 'estas'], ['ese', 'esos', 'esa', 'esas'], ['aquel', 'aquellos', 'aquella', 'aquellas']]);
-  assert.deepEqual([...table.sentences.map(s => s.answer.toLowerCase())].sort(), [...table.rows.flatMap(r => [...r.cells])].sort());
+  const forms = [...table.rows.flatMap(r => [...r.cells])];
+  for (const form of forms) assert.ok(table.sentences.filter(s => s.answer.toLowerCase() === form).length >= 6, form);
+  assert.equal(table.sentences.filter(s => !forms.includes(s.answer.toLowerCase())).length, 0);
+  const texts = table.sentences.map(s => `${s.before || ''}${s.answer}${s.after}`);
+  assert.equal(new Set(texts).size, texts.length, 'no duplicate sentences');
+  for (const s of table.sentences) {
+    assert.equal(s.answer[0] === s.answer[0].toUpperCase(), !s.before, 'capital letter only at the sentence start');
+    assert.ok(s.de, 'every sentence has a translation');
+    assert.doesNotMatch(`${s.before || ''}${s.answer}${s.after}`, /\s{2}/);
+  }
+  const round = a.window.WWCore.grammarGaps(table, 4);
+  assert.deepEqual([...round.map(g => g.answer.toLowerCase())].sort(), [...forms].sort(), 'a round asks every form once');
   const place = { aquí: 0, ahí: 1, allí: 2 };
   for (const s of table.sentences) {
     const row = place[s.after.match(/de (aquí|ahí|allí)/)[1]];

@@ -321,7 +321,12 @@
     return table.rows.flatMap((row, r) => row.cells.map((answer, c) => ({ key: `r${r}c${c}`, answer, label: `${columns[c].group} ${columns[c].column}, ${row.label}` })));
   }
   function grammarGaps(table, level, random = Math.random) {
-    if (level >= 4) return shuffle(table.sentences.map((s, i) => ({ key: `s${i}`, answer: s.answer, label: 'Fehlendes Wort' })), random);
+    if (level >= 4) {
+      // Each round draws one sentence per form, so every form comes up and the sentences change between rounds.
+      const byForm = new Map();
+      table.sentences.forEach((s, i) => { const form = normalize(s.answer, true); byForm.set(form, [...(byForm.get(form) || []), { key: `s${i}`, answer: s.answer, label: 'Fehlendes Wort' }]); });
+      return shuffle([...byForm.values()].map(options => options[Math.floor(random() * options.length)]), random);
+    }
     const cells = grammarCells(table);
     return level === 3 ? cells : shuffle(cells, random).slice(0, GRAMMAR_GAPS[level]);
   }
