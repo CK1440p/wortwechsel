@@ -146,3 +146,30 @@ window.WWDialogSeed = [
     ],
   },
 ];
+window.WWGrammarSeed = [
+  {
+    id: 'pronombres-demostrativos', title: 'Los pronombres demostrativos',
+    description: 'dieser, der da, jener: nach Nähe, Geschlecht und Zahl.',
+    tip: 'Der Anfang zeigt die Entfernung: est… ist nah, es… ist mittel weit weg, aquell… ist weit weg. Hinten steht a, os oder as. Nur der Maskulin Singular ist anders: este, ese, aquel.',
+    groups: [{ label: 'masculino', columns: ['singular', 'plural'] }, { label: 'femenino', columns: ['singular', 'plural'] }],
+    rows: [
+      { label: 'aquí', sub: 'cerca', de: 'nah', cells: ['este', 'estos', 'esta', 'estas'] },
+      { label: 'ahí', sub: 'distancia media', de: 'mittel weit weg', cells: ['ese', 'esos', 'esa', 'esas'] },
+      { label: 'allí', sub: 'lejos', de: 'weit weg', cells: ['aquel', 'aquellos', 'aquella', 'aquellas'] },
+    ],
+    sentences: [
+      { answer: 'Esta', after: ' camisa de aquí es de Bershka.', de: 'Dieses Hemd hier ist von Bershka.' },
+      { answer: 'Esos', after: ' anillos de ahí me gustan mucho.', de: 'Die Ringe da gefallen mir sehr.' },
+      { answer: 'Estas', after: ' faldas de aquí las llevan mis amigas.', de: 'Diese Röcke hier tragen meine Freundinnen.' },
+      { answer: 'Aquellas', after: ' pulseras de allí me encantan.', de: 'Die Armbänder dort drüben finde ich toll.' },
+      { answer: 'Ese', after: ' sombrero de ahí lo tiene mi padre.', de: 'Den Hut da hat mein Vater.' },
+      { answer: 'Este', after: ' jersey de aquí es muy bonito.', de: 'Dieser Pullover hier ist sehr schön.' },
+      { answer: 'Estos', after: ' zapatos de aquí son demasiado caros.', de: 'Diese Schuhe hier sind zu teuer.' },
+      { answer: 'Esa', after: ' chaqueta de ahí me queda bien.', de: 'Die Jacke da steht mir gut.' },
+      { answer: 'Esas', after: ' botas de ahí son de mi hermana.', de: 'Die Stiefel da gehören meiner Schwester.' },
+      { answer: 'Aquel', after: ' abrigo de allí cuesta 120 euros.', de: 'Der Mantel dort drüben kostet 120 Euro.' },
+      { answer: 'Aquellos', after: ' pantalones de allí son muy cómodos.', de: 'Die Hose dort drüben ist sehr bequem.' },
+      { answer: 'Aquella', after: ' camiseta de allí es demasiado grande.', de: 'Das T-Shirt dort drüben ist zu groß.' },
+    ],
+  },
+];
