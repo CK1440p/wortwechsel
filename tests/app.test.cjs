@@ -372,3 +372,36 @@ test('backup restore keeps the higher grammar stage and remote data can bring pr
   restore(1); assert.equal(a.data().grammar[id].best, 2);
   restore(3); assert.equal(a.data().grammar[id].best, 3);
 });
+
+test('subjects: switch to Geschichte, learn a round, simulate a test and keep progress', () => {
+  const a = app();
+  a.click('[data-subject="Geschichte"]');
+  assert.match(a.text(), /Geschichte\./); assert.equal(a.$('#nav-qa').hidden, false); assert.equal(a.$('#nav-vocab').hidden, true);
+  a.click('.set-card [data-action="qa-open"]'); assert.equal(a.document.querySelectorAll('.qa-item').length, 14);
+  a.click('.set-actions [data-action="qa-learn"]');
+  for (let i = 0; i < 14; i++) { a.click('[data-action="qa-reveal"]'); a.click('[data-rating="known"]'); }
+  assert.match(a.text(), /Runde geschafft/);
+  const cat = () => a.data().catalogs.find(c => c.id === 'gpb-ws-4kda');
+  assert.equal(Object.values(cat().progress).filter(p => p.level === 2).length, 14);
+  a.click('[data-action="qa-test"]'); a.click('[data-action="qa-test-start"][data-size="5"]');
+  assert.equal(a.document.querySelectorAll('.qa-test-list .qa-typed').length, 5);
+  a.click('[data-action="qa-test-submit"]'); a.click('#confirm-action');
+  a.document.querySelectorAll('[data-action="qa-points"][data-delta="0.5"]').forEach(b => { for (let i = 0; i < 10; i++) a.click(b); });
+  a.click('[data-action="qa-test-finish"]');
+  assert.equal(cat().test.last, 100); assert.match(a.text(), /Volle Punktzahl/);
+  assert.equal(Object.values(cat().progress).filter(p => p.level === 3).length, 5);
+  const b = app(a.store); assert.match(b.text(), /Geschichte\./);
+  b.click('[data-subject="Spanisch"]'); assert.match(b.text(), /Lernsets/);
+});
+
+test('a pasted catalogue creates a new subject', () => {
+  const a = app();
+  a.click('[data-subject="Geschichte"]'); a.click('[data-action="qa-new"]');
+  a.$('#qa-subject').value = 'Biologie'; a.$('#qa-title').value = 'Zelle';
+  a.$('#import-text').value = 'Was ist eine Zelle?  2 Punkte\nKleinste Einheit des Lebens\n\nWas ist DNA?  1 Punkt\nErbinformation';
+  a.submit('#qa-editor'); assert.match(a.$('#qa-editor-preview').textContent, /2 Fragen erkannt/);
+  a.submit('#qa-editor');
+  assert.ok(a.$('[data-subject="Biologie"]'));
+  const bio = a.data().catalogs.find(c => c.subject === 'Biologie');
+  assert.equal(bio.questions.length, 2); assert.equal(bio.emoji, '🧬');
+});

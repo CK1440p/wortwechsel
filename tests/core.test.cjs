@@ -217,3 +217,43 @@ test('grammar progress merges to the higher stage and survives junk', () => {
   assert.deepEqual(C.mergeStates({ sets: [] }, { sets: [] }).grammar, {});
   assert.deepEqual(C.validateGrammarProgress('x'), {}); assert.deepEqual(C.validateGrammarProgress({ a: { best: 99 } }), { a: { best: 4, practiced: '' } });
 });
+
+test('parseCatalog reads pasted Word text with points, bullets and the other formats', () => {
+  const word = '\t•\tWas versteht man unter Bipolarität?\t\t\t2 Punkte\nZwei Staaten dominieren.\n\n\t•\tNenne drei Faktoren!\t3 Punkte\n\t•\tAbrüstungsverträge\n\t•\tRolle der UNO\n';
+  const qs = C.parseCatalog(word);
+  assert.deepEqual(qs.map(q => [q.q, q.points]), [['Was versteht man unter Bipolarität?', 2], ['Nenne drei Faktoren!', 3]]);
+  assert.equal(qs[1].answer, '• Abrüstungsverträge\n• Rolle der UNO');
+  assert.deepEqual(C.answerParts(qs[1].answer).map(p => p.bullet), [true, true]);
+  assert.equal(C.parseCatalog(C.serializeCatalog({ questions: qs })).length, 2);
+  assert.equal(C.parseCatalog('F: Was ist X?\nA: Y\nF: Was ist Z?\nA: W')[1].answer, 'W');
+  assert.equal(C.parseCatalog('Was ist X? | Y\n\nWas ist Z?\nW').length, 2);
+  assert.throws(() => C.parseCatalog('   '), /Keine Fragen/);
+});
+
+test('history seed has all 14 test questions with 35 points', () => {
+  const ctx = { window: {} }; vm.runInNewContext(fs.readFileSync(require.resolve('../dist/seed.js'), 'utf8'), ctx);
+  const c = C.validateCatalog(ctx.window.WWCatalogSeed[0]);
+  assert.equal(c.subject, 'Geschichte'); assert.equal(c.questions.length, 14);
+  assert.equal(C.catalogStats(c).points, 35);
+});
+
+test('keyword coverage and point suggestions follow the model answer', () => {
+  const answer = 'Westberlin wurde blockiert, die Versorgung erfolgte 1948/1949 mit US-Flugzeugen (Rosinenbomber)';
+  const cov = C.keywordCoverage('westberlin blockiert, rosinenbomber', answer);
+  assert.ok(cov.hits.has(C.qaStem('Rosinenbomber')) && cov.hits.has(C.qaStem('Westberlin')));
+  assert.ok(!cov.hits.has(C.qaStem('Versorgung')));
+  assert.equal(C.suggestPoints('', answer, 3), 0);
+  assert.equal(C.suggestPoints(answer, answer, 3), 3);
+});
+
+test('question levels, queue order and merging by latest change', () => {
+  assert.equal(C.rateQuestion(undefined, 'known').level, 2);
+  assert.equal(C.rateQuestion({ level: 2 }, 'known').level, 3);
+  assert.equal(C.rateQuestion({ level: 3 }, 'again').level, 1);
+  const c = C.validateCatalog({ subject: 'Bio', questions: [{ id: 'a', q: 'A?', answer: 'x' }, { id: 'b', q: 'B?', answer: 'y' }, { id: 'c', q: 'C?', answer: 'z' }], progress: { a: { level: 3, at: 1 }, c: { level: 1, at: 1 } } });
+  assert.deepEqual(C.catalogQueue(c), ['c', 'b', 'a']);
+  assert.deepEqual(C.catalogQueue(c, true), ['c', 'b']);
+  const other = { ...c, progress: { a: { level: 1, seen: 1, at: 5 } }, test: { best: 80, last: 80, at: 5 } };
+  const merged = C.mergeStates({ catalogs: [c] }, { catalogs: [other] }).catalogs[0];
+  assert.equal(merged.progress.a.level, 1); assert.equal(merged.progress.c.level, 1); assert.equal(merged.test.best, 80);
+});

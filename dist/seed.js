@@ -233,3 +233,42 @@ window.WWGrammarSeed = [
     ],
   },
 ];
+
+// Question catalogues (Fragenkataloge). Built-in ones always come from here; only progress is stored.
+window.WWCatalogSeed = [
+  {
+    id: 'gpb-ws-4kda', seed: true, subject: 'Geschichte', emoji: '🏛️',
+    title: 'Test GPB · Kalter Krieg, Nahost & Afrika',
+    description: 'Fragenkatalog für den Test in GPB (WS, 4KDA): Kalter Krieg, Nahostkonflikt, Kongo und Kolonialgrenzen.',
+    questions: [
+      { id: 'q1', points: 2, q: "Was versteht man unter Multipolarität?",
+        answer: "Mehrere zentrale Mächte dominieren das System. Die Machtstrukturen sind unübersichtlich und daher instabil." },
+      { id: 'q2', points: 2, q: "Was versteht man unter Bipolarität?",
+        answer: "Zwei Staaten dominieren das Verhältnis mehrerer Staaten zueinander. Die Interessengegensätze sind politisch, wirtschaftlich und militärisch gut voneinander abgrenzbar. Das System ist relativ stabil." },
+      { id: 'q3', points: 3, q: "Beschreibe die Luftbrücke, welche für Berlin eingerichtet wurde!",
+        answer: "Westberlin wurde nach dem Zweiten Weltkrieg von den westlichen Alliierten verwaltet. Da Straßen- und Eisenbahnverbindungen dorthin von sowjetischen Truppen blockiert wurden, erfolgte die Versorgung 1948/1949 mit US-Flugzeugen (Rosinenbomber)." },
+      { id: 'q4', points: 3, q: "Was versteht man unter einem „Stellvertreterkrieg“?",
+        answer: "In einem regionalen Konfliktgebiet griffen nicht nur die unmittelbaren Kriegsgegner ein, auch mächtige Bündnispartner (meist USA oder UdSSR) leisteten Unterstützung (Waffenlieferungen, Geld), um ihre Ziele zu verfolgen. Ein direktes Aufeinandertreffen der Großmächte wurde vermieden." },
+      { id: 'q5', points: 2, q: "In welchen Regionen kam es während des Kalten Krieges zu Krisen?",
+        answer: "• Teilung Deutschlands\n• Koreakrieg\n• Kubakrise\n• Vietnamkrieg" },
+      { id: 'q6', points: 2, q: "Wie endete die Kubakrise?",
+        answer: "Die UdSSR zog ihre Raketen aus Kuba ab, die USA ihre Raketen aus der Türkei. Zusätzlich versprachen die USA, keine Invasion in Kuba zu unternehmen." },
+      { id: 'q7', points: 3, q: "Nenne drei Faktoren, die zum Ende des Kalten Krieges führten!",
+        answer: "• Abrüstungsverträge\n• Weltweite Friedensbewegungen\n• Ab den 1960er-Jahren Bereitschaft der USA zu einem „peaceful engagement“\n• Zunehmender Einstieg Europas in die Weltpolitik als neue Macht\n• Rolle der UNO\n• Wirtschaftliche Schwäche der UdSSR\n• Michail Gorbatschow – Perestroika und Glasnost\n• Rüstungspolitik unter Ronald Reagan\n• Auflösung des Warschauer Pakts 1991" },
+      { id: 'q8', points: 2, q: "Was versteht man unter dem „Nahostkonflikt“?",
+        answer: "Politischer und auch militärischer Konflikt, in den (neben Israel und der Palästinensischen Befreiungsfront PLO) einige arabische Staaten involviert waren und sind." },
+      { id: 'q9', points: 2, q: "Was versteht man unter a) „Diaspora“ und b) „Zionismus“?",
+        answer: "• Diaspora = Verstreuen der Juden über die ganze Welt\n• Zionismus = Wiedererrichtung eines jüdischen Staates" },
+      { id: 'q10', points: 2, q: "Beschreibe die „Panarabische Idee“!",
+        answer: "Zahlreiche Politiker wollten eine große und selbstständige Kulturnation aller Araber in einem gemeinsamen Nationalstaat schaffen, der vom Atlantik bis zum Persischen Golf reichen sollte." },
+      { id: 'q11', points: 3, q: "Beschreibe Ablauf und Folgen des 1. Nahostkrieges!",
+        answer: "Die arabischen Verbündeten erzielten anfangs Erfolge. Mit Waffenlieferungen aus den USA wurde Israel stärker und eroberte sogar Gebiete (Halbinsel Sinai, Westjordanland). Palästina war ab nun zweigeteilt (Westjordanland und Gazastreifen)." },
+      { id: 'q12', points: 2, q: "Was ist die „PLO“ und wie hieß deren prägendster Vertreter?",
+        answer: "• PLO = Palestine Liberation Organization; palästinensische Befreiungsorganisation\n• Jassir Arafat" },
+      { id: 'q13', points: 4, q: "Beschreibe in Stichworten die Kolonialgeschichte des Kongo!",
+        answer: "• Ende 19. Jh.: belgischer König Leopold II. erwarb Land im Kongogebiet\n• Er behandelte den Kongo und seine Bewohner wie sein Privateigentum\n• Harte Strafmaßnahmen\n• 1908 trat Leopold II. den Kongo an den belgischen Staat ab\n• Ethnische Unruhen: dauern bis heute an\n• 1960: Rückzug Belgiens; autoritäre Machthaber\n• 2006: Wahlen; separatistische Bestrebungen" },
+      { id: 'q14', points: 3, q: "Auf welche Weise fanden die Grenzziehungen der ehemaligen Kolonien statt?",
+        answer: "Die ehemaligen Kolonialmächte unterteilten Afrika durch ihre Grenzziehungen, wobei sie sich an ihren eigenen Bedürfnissen orientierten und nicht an den Menschen, die in diesen Grenzgebieten lebten. Rücksichtslos wurden soziale Gruppen und Völker entweder getrennt oder zusammen in einen Staat gepresst." },
+    ],
+  },
+];

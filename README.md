@@ -1,6 +1,11 @@
 # Wortwechsel
 
-Privater, statischer Vokabeltrainer. Einstieg: `dist/index.html`.
+Privater, statischer Lerntrainer für mehrere Fächer. Einstieg: `dist/index.html`.
+
+- Fächer: Umschalter in der Seitenleiste. Spanisch hat Lernsets, Dialoge und Grammatik; jedes andere Fach besteht aus Fragenkatalogen. Neue Fächer entstehen, sobald ein Katalog mit diesem Fach gespeichert wird.
+- Fragenkataloge: eingebaut ist „Test GPB · Kalter Krieg, Nahost & Afrika“ (Geschichte, 14 Fragen, 35 Punkte) aus `WWCatalogSeed` in `dist/seed.js`. Eigene Kataloge per Einfügen oder Upload einer Word-Datei (.docx) bzw. Textdatei; erkannt werden „Frage … 2 Punkte“ mit Antwort darunter, „F: … / A: …“ oder Blöcke mit Leerzeile.
+- Lernrunde: Frage beantworten (optional schriftlich), Musterlösung aufdecken, getroffene Schlüsselbegriffe werden markiert und fehlende unterstrichen, dann selbst bewerten (Nochmal / Fast / Gewusst). Stufen: Neu, Üben, Fast, Sicher.
+- Test simulieren: ganzer Test, Kurztest (5 Fragen) oder nur Schwächen, mit Zeit. Danach Korrektur mit Musterlösung und Punktevorschlag, Ergebnis in Prozent; Fortschritt liegt unter `catalogs` und wird mit synchronisiert.
 
 - 95 Spanisch–Deutsch-Paare aus „La ropa · Unidad 4“ enthalten.
 - Import aus Zwischenablage, TXT, CSV, TSV und JSON; komplette kopierte Quizlet-Seiten werden auf Begriffspaare reduziert. Vor dem Speichern gibt es eine bearbeitbare Vorschau.
