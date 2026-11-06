@@ -199,6 +199,27 @@ mark.qa-hit{background:color-mix(in srgb,var(--l3) 22%,transparent);color:inheri
 .qa-preview li>div:first-child strong:before{content:counter(qa) '. ';color:var(--muted)}
 .qa-preview .qa-answer{font-size:12px}
 
+/* Multiple choice stage of the learning round */
+.qa-stage{display:inline-flex;align-items:center;gap:7px;margin:20px 0 0;padding:6px 12px 6px 10px;border-radius:99px;background:var(--surface-raised);font-size:12px;font-weight:700;color:var(--blue);animation:enter .5s var(--ease) .1s backwards}
+.qa-stage .icon{width:15px;height:15px}
+.qa-stage span{font-weight:550;color:var(--muted);margin-left:4px}
+.qa-choices{display:grid;gap:10px;margin-top:14px}
+.qa-choice{min-height:0;align-items:flex-start;padding:14px 16px;border-radius:16px;font-size:13.5px;line-height:1.55;color:var(--text);transition:transform .35s var(--spring,cubic-bezier(.34,1.56,.64,1)),opacity .35s var(--ease),background .25s,border-color .25s,filter .35s var(--ease)}
+.qa-choice .choice-key{margin-top:1px}
+.qa-choice .choice-result{flex:none;align-self:center;width:20px;height:20px}
+.qa-choice .choice-result .icon{width:20px;height:20px;animation:answer-pop .5s var(--ease)}
+.qa-choice.is-dim{opacity:.38!important;filter:saturate(.4);transform:scale(.985)}
+.qa-card.chose-right .qa-choice.is-correct{box-shadow:0 10px 34px #2fbf8a26}
+.qa-choices+.qa-reveal{margin-top:4px}
+.qa-card-actions:has(> .text-button){justify-content:space-between}
+.qa-card-actions .text-button{display:inline-flex;align-items:center;gap:7px}
+.qa-card-actions .text-button .icon{width:15px;height:15px}
+.qa-choice-note{margin:0 auto 0 0;font-size:13.5px;font-weight:650;animation:enter .45s var(--ease) .1s backwards}
+.qa-choice-note.ok{color:var(--green)}
+.qa-choice-note.bad{color:#e0607e}
+[data-theme="dark"] .qa-choice-note.bad{color:#f3a9be}
+.qa-shell>.shortcut-hint{margin-top:16px;justify-content:center}
+
 @media(max-width:1250px){.qa-dock{left:calc(50% + 107px)}}
 @media(max-width:800px){
   .subject-switch{flex-direction:column;margin:0 0 16px;padding:3px}
