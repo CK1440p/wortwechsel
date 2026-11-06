@@ -257,3 +257,20 @@ test('question levels, queue order and merging by latest change', () => {
   const merged = C.mergeStates({ catalogs: [c] }, { catalogs: [other] }).catalogs[0];
   assert.equal(merged.progress.a.level, 1); assert.equal(merged.progress.c.level, 1); assert.equal(merged.test.best, 80);
 });
+
+test('catalogue answer options: one right answer, similar distractors, short previews', () => {
+  const c = { questions: [
+    { id: 'a', q: 'Kubakrise?', points: 2, answer: 'Die UdSSR zog ihre Raketen aus Kuba ab, die USA ihre Raketen aus der Türkei.' },
+    { id: 'b', q: 'Luftbrücke?', points: 3, answer: 'Die USA versorgten Berlin mit Flugzeugen.' },
+    { id: 'c', q: 'Raketen?', points: 2, answer: 'Raketen der UdSSR standen in Kuba.' },
+    { id: 'd', q: 'Kongo?', points: 4, answer: '• Belgische Kolonie\n• Unabhängigkeit 1960' },
+    { id: 'e', q: 'Doppelt?', points: 1, answer: 'Raketen der UdSSR standen in Kuba.' },
+  ] };
+  const opts = C.choiceOptions(c, 'a', 4, () => 0.1);
+  assert.equal(opts.length, 4); assert.equal(opts.filter(o => o.correct).length, 1);
+  assert.equal(new Set(opts.map(o => o.text)).size, 4);
+  assert.ok(opts.some(o => o.id === 'c'), 'the most similar answer is a distractor');
+  assert.equal(C.answerPreview(c.questions[3].answer), 'Belgische Kolonie · Unabhängigkeit 1960');
+  const long = C.answerPreview('Wort '.repeat(100), 50); assert.ok(long.length <= 52 && long.endsWith('…'));
+  assert.equal(C.choiceOptions({ questions: c.questions.slice(0, 2) }, 'a').length, 2);
+});

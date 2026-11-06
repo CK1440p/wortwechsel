@@ -126,6 +126,11 @@ button,a,label,summary,[data-action],.set-card,.qa-item-head{touch-action:manipu
   .qa-rate-btn{min-height:56px;font-size:15px;border-radius:16px;justify-content:center;align-items:center;text-align:center}
   .qa-test-item h3,.qa-test-item strong{font-size:15px}
   .qa-stepper button{width:40px;height:40px}
+  .qa-choice{font-size:14.5px;padding:15px 14px;gap:11px}
+  .qa-stage span{display:none}
+  .qa-card-actions{flex-wrap:wrap}
+  .qa-card-actions>.button{flex:1 1 100%;justify-content:center;min-height:48px}
+  .qa-choice-note{flex:1 1 100%;font-size:14px}
 
   /* Dialogs become bottom sheets. */
   dialog{box-sizing:border-box;margin:auto 0 0;width:100%!important;max-width:100%!important;max-height:calc(100dvh - 30px - env(safe-area-inset-top));border-radius:28px 28px 0 0;border-bottom:0;padding:12px max(20px,env(safe-area-inset-right)) calc(22px + env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));overscroll-behavior:contain}

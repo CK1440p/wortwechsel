@@ -424,6 +424,32 @@
     const next = rating === 'known' ? Math.min(3, Math.max(level + 1, 2)) : rating === 'partly' ? 2 : 1;
     return { level: next, seen: (Number(state?.seen) || 0) + 1, at: now };
   }
+  // Short version of a model answer for answer options: bullets joined with " · ", cut at a word boundary.
+  function answerPreview(answer, max = 230) {
+    const text = answerParts(answer).map(p => p.text.trim()).join(' · ').replace(/\s+/g, ' ').trim();
+    if (text.length <= max) return text;
+    const cut = text.slice(0, max), space = cut.lastIndexOf(' ');
+    return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s·,;:–-]+$/, '')} …`;
+  }
+  // Answer options for a question: the right one plus the most similar other answers, so guessing by topic is harder.
+  function choiceOptions(catalog, id, count = 4, random = Math.random) {
+    const right = catalog.questions.find(q => q.id === id);
+    if (!right) return [];
+    const stems = new Set(answerKeywords(`${right.q} ${right.answer}`).map(k => k.stem));
+    const seen = new Set([normalize(answerPreview(right.answer))]);
+    const others = [];
+    for (const q of catalog.questions) {
+      if (q.id === id) continue;
+      const key = normalize(answerPreview(q.answer));
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const keys = answerKeywords(q.answer).map(k => k.stem), overlap = keys.filter(s => stems.has(s)).length;
+      others.push({ q, score: (keys.length ? overlap / Math.sqrt(keys.length) : 0) + random() * 0.6 });
+    }
+    others.sort((a, b) => b.score - a.score);
+    const picked = others.slice(0, Math.max(0, count - 1)).map(({ q }) => ({ id: q.id, text: answerPreview(q.answer), correct: false }));
+    return shuffle([{ id: right.id, text: answerPreview(right.answer), correct: true }, ...picked], random);
+  }
   function validateCatalog(raw, preserveIds = true) {
     if (!raw || !Array.isArray(raw.questions)) return null;
     const ids = new Set();
@@ -470,5 +496,5 @@
     }
     return out;
   }
-  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, mergeStates, dialogParts, dialogSpeakers, dialogQueue, grammarColumns, grammarCells, grammarGaps, checkGap, validateGrammarProgress, parseCatalog, serializeCatalog, qaStem, answerParts, answerKeywords, keywordCoverage, suggestPoints, rateQuestion, validateCatalog, catalogStats, catalogQueue, mergeCatalogs };
+  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, mergeStates, dialogParts, dialogSpeakers, dialogQueue, grammarColumns, grammarCells, grammarGaps, checkGap, validateGrammarProgress, parseCatalog, serializeCatalog, qaStem, answerParts, answerKeywords, keywordCoverage, suggestPoints, rateQuestion, answerPreview, choiceOptions, validateCatalog, catalogStats, catalogQueue, mergeCatalogs };
 });

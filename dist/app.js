@@ -614,22 +614,56 @@
     const c = currentCatalog(); if (!c) return drawCatalogs();
     let queue = C.catalogQueue(c, onlyWeak);
     if (!queue.length) queue = C.catalogQueue(c, false);
-    qa = { queue, total: queue.length, done: new Set(), first: new Map(), repeated: new Set(), revealed: false, typed: '' };
+    qa = { queue, total: queue.length, done: new Set(), first: new Map(), repeated: new Set(), write: new Set(), revealed: false, typed: '' };
     drawQaCard();
   }
+  // New and shaky questions start as multiple choice; once recognised they have to be written to become "Sicher".
+  const qaChoiceMode = (c, id) => c.questions.length >= 3 && qaLevel(c, id) < 2 && !qa.write.has(id);
   function drawQaCard() {
     const c = currentCatalog(), id = qa.queue[0], q = c.questions.find(x => x.id === id), number = c.questions.indexOf(q) + 1, level = qaLevel(c, id);
     view = 'qa-learn'; renderShell(c.title);
-    qa.revealed = false; qa.typed = '';
-    const percent = Math.round(qa.done.size / qa.total * 100);
-    $('#main').innerHTML = `<section class="learning-shell qa-shell"><div class="learning-top"><button class="back-link" data-action="qa-exit">${icon('back')}Katalog</button><span class="learning-set-name">${esc(c.title)}</span><span class="qa-round-count">${qa.done.size} / ${qa.total}</span></div><div class="round-progress"><div><strong>Deine Lernrunde</strong><span>${qa.done.size} / ${qa.total} Fragen sitzen</span></div><div class="mini-progress"><span style="width:${percent}%"></span></div></div>
-      <article class="qa-card" id="qa-card"><div class="qa-card-meta"><span class="qa-chip">Frage ${number}</span>${q.points ? `<span class="qa-chip">${formatPoints(q.points)} ${q.points === 1 ? 'Punkt' : 'Punkte'}</span>` : ''}<span class="qa-level l${level}"><i></i>${QA_LEVELS[level]}</span>${qa.repeated.has(id) ? '<span class="qa-chip again">Nochmal</span>' : ''}</div><h1 class="qa-question">${esc(q.q)}</h1>
+    qa.revealed = false; qa.typed = ''; qa.choice = null; qa.options = null;
+    if (qaChoiceMode(c, id)) return drawQaChoice(c, q, number, level);
+    $('#main').innerHTML = `<section class="learning-shell qa-shell">${qaHead(c, q, number, level)}
+      <div class="qa-stage">${icon('keyboard')}Selbst schreiben</div>
       <label class="qa-answer-label" for="qa-typed">Deine Antwort <small>in Stichworten · optional, hilft beim Merken</small></label><textarea id="qa-typed" class="qa-typed" rows="4" placeholder="Schreib auf, was du noch weißt …" spellcheck="true"></textarea>
       <div class="qa-reveal" id="qa-reveal"><div class="qa-reveal-inner" id="qa-reveal-inner"></div></div>
       <div class="qa-card-actions" id="qa-actions"><span class="shortcut-hint"><kbd>⌘</kbd> <kbd>↩</kbd> oder <kbd>Leertaste</kbd></span><button class="button primary" data-action="qa-reveal">Antwort zeigen ${icon('arrow')}</button></div></article></section>`;
     const input = $('#qa-typed');
     input.addEventListener('input', () => { qa.typed = input.value; });
     input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); revealQa(); } });
+  }
+  function qaHead(c, q, number, level) {
+    const percent = Math.round(qa.done.size / qa.total * 100), id = q.id;
+    return `<div class="learning-top"><button class="back-link" data-action="qa-exit">${icon('back')}Katalog</button><span class="learning-set-name">${esc(c.title)}</span><span class="qa-round-count">${qa.done.size} / ${qa.total}</span></div><div class="round-progress"><div><strong>Deine Lernrunde</strong><span>${qa.done.size} / ${qa.total} Fragen sitzen</span></div><div class="mini-progress"><span style="width:${percent}%"></span></div></div>
+      <article class="qa-card" id="qa-card"><div class="qa-card-meta"><span class="qa-chip">Frage ${number}</span>${q.points ? `<span class="qa-chip">${formatPoints(q.points)} ${q.points === 1 ? 'Punkt' : 'Punkte'}</span>` : ''}<span class="qa-level l${level}"><i></i>${QA_LEVELS[level]}</span>${qa.repeated.has(id) ? '<span class="qa-chip again">Nochmal</span>' : ''}</div><h1 class="qa-question">${esc(q.q)}</h1>`;
+  }
+  function drawQaChoice(c, q, number, level) {
+    qa.options = C.choiceOptions(c, q.id);
+    $('#main').innerHTML = `<section class="learning-shell qa-shell">${qaHead(c, q, number, level)}
+      <div class="qa-stage choice">${icon('layers')}Auswählen <span>Welche Antwort passt?</span></div>
+      <div class="qa-choices" id="qa-choices">${qa.options.map((o, i) => `<button class="choice-button qa-choice" data-action="qa-choice" data-index="${i}"><span class="choice-key">${i + 1}</span><span>${esc(o.text)}</span><span class="choice-result"></span></button>`).join('')}</div>
+      <div class="qa-reveal" id="qa-reveal"><div class="qa-reveal-inner" id="qa-reveal-inner"></div></div>
+      <div class="qa-card-actions" id="qa-actions"><button class="text-button" data-action="qa-write">${icon('keyboard')}Lieber selbst schreiben</button><button class="text-button" data-action="qa-choice-skip">Weiß ich nicht</button></div></article><div class="shortcut-hint"><kbd>1</kbd> – <kbd>${qa.options.length}</kbd> Antwort wählen <span>·</span> <kbd>Enter</kbd> weiter</div></section>`;
+  }
+  function chooseQa(index) {
+    if (!qa?.options || qa.revealed) return;
+    const c = currentCatalog(), q = c.questions.find(x => x.id === qa.queue[0]);
+    const right = qa.options.findIndex(o => o.correct), ok = index === right;
+    qa.revealed = true; qa.choice = ok ? 'known' : 'again';
+    document.querySelectorAll('.qa-choice').forEach((btn, i) => {
+      btn.disabled = true;
+      if (i === right) { btn.classList.add('is-correct'); btn.querySelector('.choice-result').innerHTML = icon('check'); }
+      else if (i === index) btn.classList.add('is-wrong');
+      else btn.classList.add('is-dim');
+    });
+    $('#qa-card').classList.add(ok ? 'chose-right' : 'chose-wrong');
+    $('#qa-reveal-inner').innerHTML = `<div class="qa-solution"><div class="qa-solution-label">${icon('book')}Ganze Musterlösung</div><div class="qa-answer">${answerHtml(q.answer, null)}</div></div>`;
+    const note = ok ? (qaLevel(c, q.id) < 1 && !qa.repeated.has(q.id) ? 'Richtig! Nächste Runde schreibst du sie selbst.' : 'Richtig! Jetzt bist du bereit, sie selbst zu schreiben.') : index < 0 ? 'Kein Problem. Lies dir die Lösung durch, die Frage kommt gleich nochmal.' : 'Nicht ganz. Die Frage kommt gleich nochmal.';
+    $('#qa-actions').innerHTML = `<p class="qa-choice-note ${ok ? 'ok' : 'bad'}" role="status">${note}</p><button class="button primary" data-action="qa-rate" data-rating="${qa.choice}">Weiter ${icon('arrow')}</button>`;
+    requestAnimationFrame(() => $('#qa-reveal')?.classList.add('open'));
+    $('#qa-actions .button')?.focus({ preventScroll: true });
+    setTimeout(() => $('#qa-actions')?.scrollIntoView?.({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' }), 380);
   }
   function revealQa() {
     if (!qa || qa.revealed) return;
@@ -986,6 +1020,9 @@
       case 'qa-learn': return startQa(false);
       case 'qa-learn-weak': return startQa(true);
       case 'qa-reveal': return revealQa();
+      case 'qa-choice': return chooseQa(Number(btn.dataset.index));
+      case 'qa-choice-skip': return chooseQa(-1);
+      case 'qa-write': if (qa && !qa.revealed) { qa.write.add(qa.queue[0]); drawQaCard(); $('#qa-typed')?.focus({ preventScroll: true }); } return;
       case 'qa-rate': return rateQa(btn.dataset.rating);
       case 'qa-exit': return confirmAction('Lernrunde beenden?', 'Bewertete Fragen sind schon gespeichert.', 'Zum Katalog', drawCatalog);
       case 'qa-test': return drawTestSetup();
@@ -1089,6 +1126,11 @@
       if (!input && !session.answered && session.current.mode === 'mc' && /^[1-4]$/.test(e.key)) { const value = session.current.options[Number(e.key) - 1]; if (value) { e.preventDefault(); submitAnswer(value); } }
     }
     if (view === 'qa-learn' && qa && !e.repeat) {
+      if (qa.options) {
+        if (!qa.revealed && !input && /^[1-9]$/.test(e.key) && Number(e.key) <= qa.options.length) { e.preventDefault(); return chooseQa(Number(e.key) - 1); }
+        if (qa.revealed && (e.key === 'Enter' || e.key === ' ') && !e.target.closest?.('button')) { e.preventDefault(); return rateQa(qa.choice); }
+        return;
+      }
       if (!qa.revealed && !input && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); return revealQa(); }
       const rating = { 1: 'again', 2: 'partly', 3: 'known' }[e.key];
       if (qa.revealed && rating) { e.preventDefault(); return rateQa(rating); }

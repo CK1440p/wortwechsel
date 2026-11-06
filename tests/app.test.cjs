@@ -379,9 +379,15 @@ test('subjects: switch to Geschichte, learn a round, simulate a test and keep pr
   assert.match(a.text(), /Geschichte\./); assert.equal(a.$('#nav-qa').hidden, false); assert.equal(a.$('#nav-vocab').hidden, true);
   a.click('.set-card [data-action="qa-open"]'); assert.equal(a.document.querySelectorAll('.qa-item').length, 14);
   a.click('.set-actions [data-action="qa-learn"]');
-  for (let i = 0; i < 14; i++) { a.click('[data-action="qa-reveal"]'); a.click('[data-rating="known"]'); }
-  assert.match(a.text(), /Runde geschafft/);
   const cat = () => a.data().catalogs.find(c => c.id === 'gpb-ws-4kda');
+  const rightIndex = () => { const q = cat().questions.find(x => x.q === a.$('.qa-question').textContent), want = a.window.WWCore.answerPreview(q.answer); return [...a.document.querySelectorAll('.qa-choice')].findIndex(b => b.children[1].textContent === want); };
+  // New questions start as multiple choice; a wrong pick brings the question back.
+  assert.equal(a.document.querySelectorAll('.qa-choice').length, 4); assert.equal(a.$('#qa-typed'), null);
+  const first = a.$('.qa-question').textContent, wrong = rightIndex() === 0 ? 1 : 0;
+  a.click(`.qa-choice[data-index="${wrong}"]`); assert.match(a.text(), /Nicht ganz/); a.click('[data-action="qa-rate"]');
+  let seenAgain = false;
+  for (let i = 0; i < 30 && a.$('.qa-choice'); i++) { if (a.$('.qa-question').textContent === first) seenAgain = true; a.click(`.qa-choice[data-index="${rightIndex()}"]`); assert.match(a.text(), /Richtig/); a.click('[data-action="qa-rate"]'); }
+  assert.ok(seenAgain); assert.match(a.text(), /Runde geschafft/);
   assert.equal(Object.values(cat().progress).filter(p => p.level === 2).length, 14);
   a.click('[data-action="qa-test"]'); a.click('[data-action="qa-test-start"][data-size="5"]');
   assert.equal(a.document.querySelectorAll('.qa-test-list .qa-typed').length, 5);
@@ -392,6 +398,21 @@ test('subjects: switch to Geschichte, learn a round, simulate a test and keep pr
   assert.equal(Object.values(cat().progress).filter(p => p.level === 3).length, 5);
   const b = app(a.store); assert.match(b.text(), /Geschichte\./);
   b.click('[data-subject="Spanisch"]'); assert.match(b.text(), /Lernsets/);
+});
+
+test('after multiple choice the next round asks to write, and writing makes questions safe', () => {
+  const a = app();
+  a.click('[data-subject="Geschichte"]'); a.click('.set-card [data-action="qa-open"]'); a.click('.set-actions [data-action="qa-learn"]');
+  a.click('[data-action="qa-write"]'); assert.ok(a.$('#qa-typed')); assert.equal(a.$('.qa-choice'), null);
+  a.click('[data-action="qa-reveal"]'); a.click('[data-rating="known"]');
+  const cat = () => a.data().catalogs.find(c => c.id === 'gpb-ws-4kda');
+  assert.equal(Object.values(cat().progress).filter(p => p.level === 2).length, 1);
+  a.click('[data-action="qa-exit"]'); a.click('#confirm-action');
+  const snap = a.data(); a.window.WWApp.apply({ ...snap, catalogs: snap.catalogs.map(c => c.id === 'gpb-ws-4kda' ? { ...c, progress: Object.fromEntries(c.questions.map(q => [q.id, { level: 2, seen: 1, at: Date.now() }])) } : c) });
+  a.click('#nav-qa-learn');
+  assert.equal(a.$('.qa-choice'), null); assert.ok(a.$('#qa-typed')); assert.match(a.text(), /Selbst schreiben/);
+  a.click('[data-action="qa-reveal"]'); a.click('[data-rating="known"]');
+  assert.equal(Object.values(cat().progress).filter(p => p.level === 3).length, 1);
 });
 
 test('a pasted catalogue creates a new subject', () => {
