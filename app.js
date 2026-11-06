@@ -28,6 +28,7 @@
     book: '<path d="M12 6C8 3 4 4 2 5v15c4-2 7-1 10 1 3-2 6-3 10-1V5c-2-1-6-2-10 1Zm0 0v15"/>',
     chat: '<path d="M4 5h16v11H9l-5 4Z"/><path d="M8 9h8m-8 3h5"/>',
     sound: '<path d="M4 9v6h4l5 4V5L8 9Z"/><path d="M16.5 9a4 4 0 0 1 0 6"/>',
+    chevron: '<path d="m6 9 6 6 6-6"/>',
     table: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 10h18M3 15h18M9 4v16"/>',
   };
   const icon = (name, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.book}</svg>`;
@@ -73,6 +74,7 @@
   }
   data.dialogs = mergeDialogs(data.dialogs);
   data.grammar = C.validateGrammarProgress(data.grammar);
+  data.catalogs = withCatalogSeeds(data.catalogs);
   let selectedId = data.selectedId || data.sets[0]?.id, view = 'library', session = null, flash = null, termSearch = '', librarySearch = '';
   let importDraft = null, importTarget = null, importRaw = '', importWarnings = [], toastTimer, fileLoadVersion = 0;
   const currentSet = () => data.sets.find(s => s.id === selectedId) || data.sets[0];
@@ -97,10 +99,18 @@
   }
   function toast(message) { const el = $('#toast'); el.textContent = message; el.classList.add('visible'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('visible'), 4200); }
   function renderShell(title = 'Meine Lernsets') {
-    $('#breadcrumb').innerHTML = `Dein Lernraum <span>/</span> <strong>${esc(title)}</strong>`;
+    if (VOCAB_VIEWS.includes(view)) subject = VOCAB;
+    else if (['catalog', 'qa-learn', 'qa-test'].includes(view) && currentCatalog()) subject = currentCatalog().subject;
+    if (view !== 'qa-learn') qa = null;
+    if (view !== 'qa-test') qaTest = null;
+    if (testTimer) { clearInterval(testTimer); testTimer = null; }
+    syncSubjectUi();
+    $('#breadcrumb').innerHTML = `${esc(subject)} <span>/</span> <strong>${esc(title)}</strong>`;
     $('#set-count').textContent = data.sets.length;
-    document.querySelectorAll('.nav-item[data-view]').forEach(el => el.classList.toggle('active', view === el.dataset.view));
+    document.querySelectorAll('.nav-item[data-view]').forEach(el => el.classList.toggle('active', view === el.dataset.view || (el.dataset.view === 'catalogs' && view === 'catalog')));
     $('#nav-practice').classList.toggle('active', view === 'learn');
+    $('#nav-qa-learn').classList.toggle('active', view === 'qa-learn');
+    $('#nav-qa-test').classList.toggle('active', view === 'qa-test');
     if (view !== 'grammar') gram = null;
     stopSpeech();
     hydrateIcons();
@@ -479,6 +489,341 @@
     $('#main').innerHTML = `<section class="result-page"><div class="result-icon">${icon('check')}<span>✦</span></div><h1>Stufe ${level} ${passed ? 'geschafft' : 'durchgespielt'}<span class="blue-dot">.</span></h1><p>${note}</p><div class="result-stats"><div><strong>${gram.firstTry} / ${total}</strong><span>beim ersten Versuch</span></div><div><strong>${gram.checked}</strong><span>${gram.checked === 1 ? 'Durchgang' : 'Durchgänge'}</span></div><div><strong>${missed.length}</strong><span>${missed.length === 1 ? 'Feld wiederholt' : 'Felder wiederholt'}</span></div></div>${slips.length ? `<p class="dlg-accent-note">Zählt als richtig, im Test aber auf den Akzent achten: ${esc(slips.join(', '))}</p>` : ''}${missed.length ? `<div class="result-review"><h3>Wiederholte Felder</h3>${missed.map(g => `<div><span lang="es">${esc(g.answer)}</span>${g.key.startsWith('r') ? `<span>${esc(g.label)}</span>` : ''}</div>`).join('')}</div>` : '<div class="perfect-note">Keine Fehler.</div>'}<div class="result-actions">${buttons.join('')}<button class="text-button" data-action="gram-open">Zurück zur Tabelle</button></div></section>`;
     gram = null;
   }
+  // ---- Subjects (Fächer). Spanisch keeps the vocabulary tools, every other subject is made of question catalogues. ----
+  const VOCAB = 'Spanisch', VOCAB_VIEWS = ['library', 'set', 'learn', 'flashcards', 'dialogs', 'grammar'], SUBJECT_KEY = 'wortwechsel.subject';
+  const QA_LEVELS = ['Neu', 'Üben', 'Fast', 'Sicher'];
+  const SUBJECT_EMOJI = { geschichte: '🏛️', gpb: '🏛️', biologie: '🧬', bio: '🧬', chemie: '⚗️', physik: '🔭', mathe: '📐', mathematik: '📐', geografie: '🌍', geographie: '🌍', gwk: '🌍', deutsch: '📖', englisch: '💂', wirtschaft: '📈', bwl: '📈', recht: '⚖️', informatik: '💻', religion: '🕊️', ethik: '🕊️', musik: '🎵', kunst: '🎨', psychologie: '🧠', philosophie: '💭', politik: '🗳️' };
+  let subject = VOCAB, catalogId = null, qa = null, qaTest = null, qaFilter = 'all', qaDraft = null, qaEditing = null, testTimer = null;
+  try { subject = localStorage.getItem(SUBJECT_KEY) || VOCAB; } catch {}
+  const reduced = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const sameSubject = (a, b) => C.normalize(a) === C.normalize(b);
+  const subjectList = () => { const out = [VOCAB]; for (const c of data.catalogs) if (!out.some(s => sameSubject(s, c.subject))) out.push(c.subject); return out; };
+  const subjectCatalogs = (name = subject) => data.catalogs.filter(c => sameSubject(c.subject, name));
+  const subjectEmoji = name => sameSubject(name, VOCAB) ? '🇪🇸' : SUBJECT_EMOJI[C.normalize(name)] || subjectCatalogs(name)[0]?.emoji || '📘';
+  const currentCatalog = () => data.catalogs.find(c => c.id === catalogId);
+  const lastPracticed = c => Math.max(Number(c.test?.at) || 0, ...Object.values(c.progress || {}).map(p => Number(p.at) || 0));
+  const formatPoints = n => String(Math.round(n * 10) / 10).replace('.', ',');
+  const qaLevel = (c, id) => c.progress?.[id]?.level || 0;
+  function syncSubjectUi() {
+    const list = subjectList(), el = $('#subject-switch');
+    if (!list.some(s => sameSubject(s, subject))) subject = VOCAB;
+    const key = list.join('\n');
+    if (el.dataset.key !== key) {
+      el.dataset.key = key; el.classList.toggle('many', list.length > 2);
+      el.innerHTML = `<span class="subject-thumb" aria-hidden="true"></span>${list.map(s => `<button type="button" class="subject-tab" role="tab" data-subject="${esc(s)}" title="${esc(s)}"><span class="subject-emoji" aria-hidden="true">${esc(subjectEmoji(s))}</span><span class="subject-name">${esc(s)}</span></button>`).join('')}`;
+      el.querySelectorAll('.subject-tab').forEach(tab => tab.setAttribute('aria-selected', String(sameSubject(tab.dataset.subject, subject))));
+      moveSubjectThumb(true);
+    } else {
+      el.querySelectorAll('.subject-tab').forEach(tab => tab.setAttribute('aria-selected', String(sameSubject(tab.dataset.subject, subject))));
+      moveSubjectThumb();
+    }
+    const vocab = sameSubject(subject, VOCAB);
+    if ($('#nav-vocab').hidden !== !vocab) { $('#nav-vocab').hidden = !vocab; $('#nav-qa').hidden = vocab; }
+    $('#nav-vocab-catalogs').hidden = !subjectCatalogs(VOCAB).length;
+    try { localStorage.setItem(SUBJECT_KEY, subject); } catch {}
+  }
+  function moveSubjectThumb(instant = false) {
+    const el = $('#subject-switch'), active = el?.querySelector('[aria-selected="true"]'), thumb = el?.querySelector('.subject-thumb');
+    if (!active || !thumb?.style) return;
+    if (instant) thumb.style.transition = 'none';
+    thumb.style.transform = `translate(${active.offsetLeft || 0}px, ${active.offsetTop || 0}px)`;
+    thumb.style.width = `${active.offsetWidth || 0}px`; thumb.style.height = `${active.offsetHeight || 0}px`;
+    if (instant) { void thumb.offsetWidth; thumb.style.transition = ''; }
+  }
+  // Fades the page out, swaps it, and lets the new page settle in. Without animation support it just swaps.
+  function transition(fn) {
+    const main = $('#main');
+    if (reduced() || typeof main.animate !== 'function') return fn();
+    main.getAnimations?.().forEach(a => a.cancel());
+    main.animate([{ opacity: 1, filter: 'blur(0)', transform: 'none' }, { opacity: 0, filter: 'blur(6px)', transform: 'scale(.985)' }], { duration: 170, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished.then(() => {
+      fn(); main.getAnimations().forEach(a => a.cancel()); window.scrollTo?.(0, 0);
+      main.animate([{ opacity: 0, filter: 'blur(8px)', transform: 'translateY(14px) scale(.99)' }, { opacity: 1, filter: 'blur(0)', transform: 'none' }], { duration: 520, easing: 'cubic-bezier(.16,1,.3,1)' });
+    }, () => {});
+  }
+  const busy = () => !!(session?.current || dlg || gram || qa || qaTest?.phase === 'write');
+  function switchSubject(name) {
+    const go = () => {
+      subject = name; syncSubjectUi();
+      transition(() => sameSubject(subject, VOCAB) ? drawLibrary() : drawCatalogs());
+    };
+    if (busy()) return confirmAction('Übung verlassen?', 'Die laufende Übung wird beendet. Bereits bewertete Antworten bleiben gespeichert.', 'Fach wechseln', go);
+    go();
+  }
+  // Built-in catalogues always come from seed.js, so text fixes reach existing users. Only their progress is stored.
+  function withCatalogSeeds(stored) {
+    const valid = (Array.isArray(stored) ? stored : []).map(c => C.validateCatalog(c)).filter(Boolean);
+    const seeds = (window.WWCatalogSeed || []).map(seed => { const old = valid.find(c => c.id === seed.id); return C.validateCatalog({ ...seed, progress: old?.progress, test: old?.test, created: old?.created }); }).filter(Boolean);
+    return [...seeds, ...valid.filter(c => !seeds.some(s => s.id === c.id))];
+  }
+  function answerHtml(answer, given = null) {
+    const coverage = given === null ? null : C.keywordCoverage(given, answer);
+    const keys = new Set(C.answerKeywords(answer).map(k => k.stem));
+    const words = text => coverage ? String(text).split(/([\p{L}\d]+)/u).map((part, i) => {
+      if (i % 2 === 0) return esc(part);
+      const stem = C.qaStem(part);
+      if (!keys.has(stem)) return esc(part);
+      return coverage.hits.has(stem) ? `<mark class="qa-hit">${esc(part)}</mark>` : `<span class="qa-miss">${esc(part)}</span>`;
+    }).join('') : esc(text);
+    let out = '', list = [];
+    const flush = () => { if (list.length) out += `<ul>${list.map((t, i) => `<li style="--i:${i}">${words(t)}</li>`).join('')}</ul>`; list = []; };
+    for (const part of C.answerParts(answer)) { if (part.bullet) list.push(part.text); else { flush(); out += `<p>${words(part.text)}</p>`; } }
+    flush();
+    return out;
+  }
+  function totals(list) {
+    const out = { total: 0, points: 0, safe: 0, almost: 0, practice: 0, fresh: 0 };
+    for (const c of list) { const s = C.catalogStats(c); for (const k of Object.keys(out)) out[k] += s[k]; }
+    out.progress = out.total ? Math.round((out.safe + out.almost * 0.5) / out.total * 100) : 0;
+    return out;
+  }
+  const ring = (percent, label) => `<div class="qa-ring" style="--p:${percent}"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring-track" cx="60" cy="60" r="52"/><circle class="ring-fill" cx="60" cy="60" r="52" pathLength="100"/></svg><div><strong>${percent}<small>%</small></strong><span>${esc(label)}</span></div></div>`;
+  const levelLegend = s => `<div class="qa-legend"><span><i class="l3"></i>Sicher <strong>${s.safe}</strong></span><span><i class="l2"></i>Fast <strong>${s.almost}</strong></span><span><i class="l1"></i>Üben <strong>${s.practice}</strong></span><span><i class="l0"></i>Neu <strong>${s.fresh}</strong></span></div>`;
+  const levelBar = s => `<div class="qa-stack" aria-hidden="true">${[['l3', s.safe], ['l2', s.almost], ['l1', s.practice], ['l0', s.fresh]].filter(([, n]) => n).map(([cls, n], i) => `<span class="${cls}" style="flex:${n};--i:${i}"></span>`).join('')}</div>`;
+  function drawCatalogs() {
+    view = 'catalogs'; session = null; flash = null; renderShell('Übersicht');
+    const list = subjectCatalogs();
+    if (!list.length && !sameSubject(subject, VOCAB)) { subject = VOCAB; return drawLibrary(); }
+    const focus = [...list].sort((a, b) => lastPracticed(b) - lastPracticed(a))[0], all = totals(list), fs = focus && C.catalogStats(focus);
+    const tests = list.filter(c => c.test?.at).sort((a, b) => b.test.at - a.test.at);
+    const first = focus?.questions[0];
+    $('#main').innerHTML = `<section class="page-intro"><div><h1>${esc(subject)}<span class="blue-dot">.</span></h1><p>${list.length} ${list.length === 1 ? 'Fragenkatalog' : 'Fragenkataloge'} · ${all.total} Fragen · ${formatPoints(all.points)} Punkte</p></div><button class="button primary" data-action="qa-new">${icon('plus')}Neuer Fragenkatalog</button></section>
+      ${focus ? `<section class="dashboard-grid"><div class="focus-card qa-focus"><div class="focus-copy"><div class="hero-tag"><span class="pulse-dot"></span>${lastPracticed(focus) ? 'WEITERLERNEN' : 'LOS GEHT’S'}</div><h2>${esc(focus.title)}</h2><p>${fs.total} Fragen · ${formatPoints(fs.points)} Punkte · ${fs.safe} sicher</p><div class="hero-actions"><button class="button white" data-action="qa-learn" data-catalog="${esc(focus.id)}">${icon('spark')}${fs.safe + fs.almost ? 'Weiterlernen' : 'Lernen'}${icon('arrow')}</button><button class="button glass" data-action="qa-test" data-catalog="${esc(focus.id)}">${icon('clock')}Test simulieren</button></div></div><div class="hero-art qa-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><span class="art-star star-one">✳</span><span class="art-star star-two">✧</span><div class="art-card card-back"><span>Musterlösung</span><div class="mini-line"></div><div class="mini-line"></div><div class="mini-line short"></div></div><div class="art-card card-front"><span class="qa-art-mark">?</span><strong>${esc(first?.q || 'Frage')}</strong><span>${first?.points ? `${first.points} Punkte` : 'Frage 1'}</span></div><div class="art-check">${icon('check')}</div></div></div>
+      <aside class="progress-card qa-progress-card"><div class="section-kicker">DEIN STAND ${icon('chart')}</div><div class="qa-progress-body">${ring(all.progress, 'gelernt')}${levelLegend(all)}</div><div class="stat-duo"><div><span class="stat-icon flame">${icon('flame')}</span><strong>${streak()} <small>${streak() === 1 ? 'Tag' : 'Tage'}</small></strong><p>in Folge gelernt</p></div><div><span class="stat-icon lavender">${icon('clock')}</span><strong>${tests[0] ? `${tests[0].test.last}<small>%</small>` : '–'}</strong><p>${tests[0] ? 'letzter Test' : 'noch kein Test'}</p></div></div></aside></section>` : ''}
+      <section class="library-section"><div class="section-heading"><div><h2>Fragenkataloge <span class="count-badge">${list.length}</span></h2></div></div><div class="set-grid">${list.map((c, index) => { const s = C.catalogStats(c); return `<article class="set-card"><div class="set-card-top"><div class="set-emoji tone-${index % 3}">${esc(c.emoji)}</div><span class="language-pill">${s.total} Fragen · ${formatPoints(s.points)} P.</span></div><button class="set-title" data-action="qa-open" data-catalog="${esc(c.id)}">${esc(c.title)}</button><div class="set-meta">${icon('check')} ${s.safe} sicher <span>·</span> ${s.almost} fast${c.test?.best ? ` <span>·</span> Test ${c.test.best}%` : ''}</div><div class="set-progress-label"><span>Fortschritt</span><strong>${s.progress}%</strong></div>${levelBar(s)}<div class="set-card-footer"><button class="text-button" data-action="qa-open" data-catalog="${esc(c.id)}">Fragen ansehen</button><button class="round-button" data-action="qa-learn" data-catalog="${esc(c.id)}" aria-label="${esc(c.title)} lernen">${icon('arrow')}</button></div></article>`; }).join('')}<button class="new-set-card" data-action="qa-new"><span class="new-set-icon">${icon('plus')}</span><strong>Neuer Fragenkatalog</strong><span>Fragen und Antworten einfügen oder Word-Datei hochladen</span><span class="text-button">Katalog erstellen ${icon('arrow')}</span></button></div></section>`;
+  }
+  function qaListHtml(c) {
+    const shown = c.questions.map((q, i) => ({ q, i, level: qaLevel(c, q.id) })).filter(x => qaFilter === 'all' || (qaFilter === 'weak' ? x.level < 3 : x.level >= 3));
+    if (!shown.length) return `<div class="empty-state">${qaFilter === 'weak' ? 'Alles sicher. Stark!' : 'Noch keine Frage sicher. Starte eine Lernrunde.'}</div>`;
+    return shown.map(({ q, i, level }, n) => `<article class="qa-item" style="--i:${Math.min(n, 12)}"><button class="qa-item-head" data-action="qa-toggle" aria-expanded="false"><span class="qa-num">${i + 1}</span><span class="qa-item-q">${esc(q.q)}</span>${q.points ? `<span class="qa-points">${formatPoints(q.points)} P.</span>` : ''}<span class="qa-level l${level}" title="${QA_LEVELS[level]}"><i></i>${QA_LEVELS[level]}</span><span class="qa-chevron">${icon('chevron')}</span></button><div class="qa-item-body"><div><div class="qa-answer">${answerHtml(q.answer)}</div></div></div></article>`).join('');
+  }
+  function drawCatalog() {
+    const c = currentCatalog(); if (!c) return drawCatalogs();
+    view = 'catalog'; session = null; flash = null; renderShell(c.title);
+    const s = C.catalogStats(c);
+    $('#main').innerHTML = `<button class="back-link" data-action="qa-home">${icon('back')} ${esc(c.subject)}</button><section class="set-page-heading"><div class="set-emoji big">${esc(c.emoji)}</div><div><div class="eyebrow">${esc(c.subject.toUpperCase())} · ${s.total} FRAGEN · ${formatPoints(s.points)} PUNKTE</div><h1>${esc(c.title)}</h1>${c.description ? `<p>${esc(c.description)}</p>` : ''}</div>${c.seed ? '' : `<button class="icon-button" data-action="qa-edit" aria-label="Katalog bearbeiten" title="Katalog bearbeiten">${icon('edit')}</button>`}</section>
+      <div class="set-actions"><button class="button primary" data-action="qa-learn">${icon('spark')}${s.safe + s.almost + s.practice ? 'Weiterlernen' : 'Jetzt lernen'}</button>${s.safe && s.safe < s.total ? `<button class="button secondary" data-action="qa-learn-weak">${icon('flame')}Nur Unsichere</button>` : ''}<button class="button secondary" data-action="qa-test">${icon('clock')}Test simulieren</button></div>
+      <section class="mastery-panel qa-mastery"><div class="qa-mastery-main">${levelBar(s)}${levelLegend(s)}</div><div class="qa-mastery-side"><div><strong>${s.progress}%</strong><span>gelernt</span></div><div><strong>${c.test?.best ? `${c.test.best}%` : '–'}</strong><span>bester Test</span></div></div></section>
+      <section class="terms-section"><div class="section-heading"><div><h2>Alle Fragen <span class="count-badge">${s.total}</span></h2><p>Tippe eine Frage an, um die Musterlösung zu sehen. Überleg dir die Antwort vorher.</p></div><div class="qa-filter" role="group" aria-label="Fragen filtern">${[['all', 'Alle'], ['weak', 'Zu üben'], ['safe', 'Sicher']].map(([k, label]) => `<button class="qa-filter-chip" data-action="qa-filter" data-filter="${k}" aria-pressed="${qaFilter === k}">${label}</button>`).join('')}<button class="qa-filter-chip" data-action="qa-expand-all">Alle aufklappen</button></div></div><div class="qa-list" id="qa-list">${qaListHtml(c)}</div><div class="set-danger-zone"><button class="text-button" data-action="qa-reset">Fortschritt zurücksetzen</button>${c.seed ? '' : `<button class="text-button danger" data-action="qa-delete">${icon('trash')}Katalog löschen</button>`}</div></section>`;
+  }
+  function toggleQaItem(item, open = !item.classList.contains('open')) {
+    item.classList.toggle('open', open);
+    item.querySelector('.qa-item-head').setAttribute('aria-expanded', String(open));
+  }
+  // ---- Learning round: recall, compare with the model answer, rate yourself. "Nochmal" comes back after a few cards. ----
+  function startQa(onlyWeak = false) {
+    const c = currentCatalog(); if (!c) return drawCatalogs();
+    let queue = C.catalogQueue(c, onlyWeak);
+    if (!queue.length) queue = C.catalogQueue(c, false);
+    qa = { queue, total: queue.length, done: new Set(), first: new Map(), repeated: new Set(), revealed: false, typed: '' };
+    drawQaCard();
+  }
+  function drawQaCard() {
+    const c = currentCatalog(), id = qa.queue[0], q = c.questions.find(x => x.id === id), number = c.questions.indexOf(q) + 1, level = qaLevel(c, id);
+    view = 'qa-learn'; renderShell(c.title);
+    qa.revealed = false; qa.typed = '';
+    const percent = Math.round(qa.done.size / qa.total * 100);
+    $('#main').innerHTML = `<section class="learning-shell qa-shell"><div class="learning-top"><button class="back-link" data-action="qa-exit">${icon('back')}Katalog</button><span class="learning-set-name">${esc(c.title)}</span><span class="qa-round-count">${qa.done.size} / ${qa.total}</span></div><div class="round-progress"><div><strong>Deine Lernrunde</strong><span>${qa.done.size} / ${qa.total} Fragen sitzen</span></div><div class="mini-progress"><span style="width:${percent}%"></span></div></div>
+      <article class="qa-card" id="qa-card"><div class="qa-card-meta"><span class="qa-chip">Frage ${number}</span>${q.points ? `<span class="qa-chip">${formatPoints(q.points)} ${q.points === 1 ? 'Punkt' : 'Punkte'}</span>` : ''}<span class="qa-level l${level}"><i></i>${QA_LEVELS[level]}</span>${qa.repeated.has(id) ? '<span class="qa-chip again">Nochmal</span>' : ''}</div><h1 class="qa-question">${esc(q.q)}</h1>
+      <label class="qa-answer-label" for="qa-typed">Deine Antwort <small>in Stichworten · optional, hilft beim Merken</small></label><textarea id="qa-typed" class="qa-typed" rows="4" placeholder="Schreib auf, was du noch weißt …" spellcheck="true"></textarea>
+      <div class="qa-reveal" id="qa-reveal"><div class="qa-reveal-inner" id="qa-reveal-inner"></div></div>
+      <div class="qa-card-actions" id="qa-actions"><span class="shortcut-hint"><kbd>⌘</kbd> <kbd>↩</kbd> oder <kbd>Leertaste</kbd></span><button class="button primary" data-action="qa-reveal">Antwort zeigen ${icon('arrow')}</button></div></article></section>`;
+    const input = $('#qa-typed');
+    input.addEventListener('input', () => { qa.typed = input.value; });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); revealQa(); } });
+  }
+  function revealQa() {
+    if (!qa || qa.revealed) return;
+    const c = currentCatalog(), q = c.questions.find(x => x.id === qa.queue[0]), typed = $('#qa-typed').value.trim();
+    qa.revealed = true; qa.typed = typed;
+    const input = $('#qa-typed'); input.readOnly = true; input.classList.add('done'); if (!typed) input.closest('.qa-card').classList.add('no-typed');
+    const cov = typed ? C.keywordCoverage(typed, q.answer) : null;
+    const suggest = !cov ? '' : cov.ratio >= 0.6 ? 'known' : cov.ratio >= 0.3 ? 'partly' : 'again';
+    $('#qa-reveal-inner').innerHTML = `${cov ? `<div class="qa-coverage"><div class="qa-coverage-top"><span>Schlüsselbegriffe getroffen</span><strong>${cov.hits.size} / ${cov.total}</strong></div><div class="mini-progress"><span style="width:${Math.round(cov.ratio * 100)}%"></span></div><small><mark class="qa-hit">markiert</mark> hast du erwähnt, <span class="qa-miss">unterstrichen</span> fehlt noch.</small></div>` : ''}<div class="qa-solution"><div class="qa-solution-label">${icon('book')}Musterlösung</div><div class="qa-answer">${answerHtml(q.answer, typed ? typed : null)}</div></div>`;
+    $('#qa-actions').innerHTML = `<p class="qa-rate-q">Wie gut wusstest du es?</p><div class="qa-rate">${[['again', 'Nochmal', 'kommt gleich wieder', 1], ['partly', 'Fast', 'kommt am Ende nochmal', 2], ['known', 'Gewusst', 'sitzt', 3]].map(([r, label, hint, key]) => `<button class="qa-rate-btn ${r}${suggest === r ? ' suggested' : ''}" data-action="qa-rate" data-rating="${r}"><kbd>${key}</kbd><strong>${label}</strong><small>${hint}</small></button>`).join('')}</div>`;
+    requestAnimationFrame(() => { $('#qa-reveal')?.classList.add('open'); $('#qa-actions')?.classList.add('rating'); });
+    (document.querySelector('.qa-rate-btn.suggested') || document.querySelector('.qa-rate-btn.known'))?.focus({ preventScroll: true });
+  }
+  function rateQa(rating) {
+    if (!qa?.revealed) return;
+    const c = currentCatalog(), id = qa.queue.shift();
+    c.progress[id] = C.rateQuestion(c.progress[id], rating);
+    if (!qa.first.has(id)) qa.first.set(id, rating);
+    if (rating === 'again') { qa.queue.splice(Math.min(3, qa.queue.length), 0, id); qa.repeated.add(id); }
+    else if (rating === 'partly' && !qa.repeated.has(id) && qa.queue.length) { qa.queue.push(id); qa.repeated.add(id); }
+    else qa.done.add(id);
+    data.history[localDate()] = (Number(data.history[localDate()]) || 0) + 1;
+    save();
+    const next = () => qa.queue.length ? drawQaCard() : drawQaResult();
+    const card = $('#qa-card');
+    if (reduced() || typeof card?.animate !== 'function') return next();
+    qa.revealed = false;
+    card.animate([{ opacity: 1, transform: 'none', filter: 'blur(0)' }, { opacity: 0, transform: `translateX(${rating === 'again' ? 40 : -40}px) scale(.97)`, filter: 'blur(4px)' }], { duration: 220, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished.then(next, next);
+  }
+  function drawQaResult() {
+    const c = currentCatalog(), counts = { known: 0, partly: 0, again: 0 };
+    for (const r of qa.first.values()) counts[r]++;
+    const weak = c.questions.filter(q => qa.first.has(q.id) && qa.first.get(q.id) !== 'known'), s = C.catalogStats(c);
+    view = 'qa-learn'; qa = null; renderShell(c.title);
+    $('#main').innerHTML = `<section class="result-page"><div class="result-icon">${icon('check')}<span>✦</span></div><h1>Runde geschafft<span class="blue-dot">.</span></h1><p>${s.safe === s.total ? 'Alle Fragen sitzen. Mach zur Kontrolle einen Test.' : `${s.safe} von ${s.total} Fragen sind jetzt sicher. Wiederhole die unsicheren, bis alle sitzen.`}</p><div class="result-stats"><div><strong>${counts.known}</strong><span>gewusst</span></div><div><strong>${counts.partly}</strong><span>fast</span></div><div><strong>${counts.again}</strong><span>nochmal</span></div></div>${weak.length ? `<div class="result-review qa-review"><h3>Beim ersten Mal unsicher</h3>${weak.map(q => `<div><span>${esc(q.q)}</span><span class="qa-level l${qaLevel(c, q.id)}"><i></i>${QA_LEVELS[qaLevel(c, q.id)]}</span></div>`).join('')}</div>` : '<div class="perfect-note">Alles beim ersten Mal gewusst.</div>'}<div class="result-actions">${s.safe < s.total ? `<button class="button primary" data-action="qa-learn-weak">Unsichere wiederholen ${icon('arrow')}</button><button class="button secondary" data-action="qa-test">Test simulieren</button>` : `<button class="button primary" data-action="qa-test">Test simulieren ${icon('arrow')}</button><button class="button secondary" data-action="qa-learn">Nochmal alle</button>`}<button class="text-button" data-action="qa-open">Zum Katalog</button></div></section>`;
+  }
+  // ---- Test simulation: write everything first, then correct yourself with the model answer and a points suggestion. ----
+  function drawTestSetup() {
+    const c = currentCatalog(); if (!c) return drawCatalogs();
+    view = 'qa-test'; qaTest = null; renderShell('Test simulieren');
+    const s = C.catalogStats(c), weak = c.questions.filter(q => qaLevel(c, q.id) < 3).length, short = Math.min(5, s.total);
+    const option = (size, big, title, text) => `<button class="qa-test-option" data-action="qa-test-start" data-size="${size}"><span class="qa-test-big">${big}</span><strong>${title}</strong><small>${text}</small><span class="qa-test-go">${icon('arrow')}</span></button>`;
+    $('#main').innerHTML = `<button class="back-link" data-action="qa-open">${icon('back')} ${esc(c.title)}</button><section class="qa-test-intro"><div class="eyebrow">${icon('clock')} TEST SIMULIEREN</div><h1>Wie im echten Test<span class="blue-dot">.</span></h1><p>Du beantwortest die Fragen schriftlich, ohne Hilfe. Danach siehst du die Musterlösung neben deiner Antwort, bekommst einen Punktevorschlag und korrigierst dich selbst.</p>
+      <div class="qa-test-options">${option('all', s.total, 'Ganzer Test', `alle Fragen · ${formatPoints(s.points)} Punkte`)}${s.total > short ? option('5', short, 'Kurztest', `${short} zufällige Fragen`) : ''}${weak && weak < s.total ? option('weak', weak, 'Schwächen', 'nur Fragen, die noch nicht sicher sind') : ''}</div>
+      <label class="qa-switch"><input type="checkbox" id="qa-shuffle" checked><span class="qa-switch-ui" aria-hidden="true"></span><span>Reihenfolge mischen</span></label>${c.test?.at ? `<p class="qa-test-best">Bester Test: <strong>${c.test.best}%</strong> · Letzter: <strong>${c.test.last}%</strong></p>` : ''}</section>`;
+  }
+  function startTest(size) {
+    const c = currentCatalog(); if (!c) return drawCatalogs();
+    const mix = $('#qa-shuffle')?.checked !== false;
+    let ids = c.questions.map(q => q.id);
+    if (size === 'weak') ids = ids.filter(id => qaLevel(c, id) < 3);
+    if (size === '5') { const pick = new Set(C.shuffle(ids).slice(0, 5)); ids = ids.filter(id => pick.has(id)); }
+    if (mix) ids = C.shuffle(ids);
+    if (!ids.length) ids = c.questions.map(q => q.id);
+    qaTest = { ids, answers: {}, awarded: {}, phase: 'write', started: Date.now(), seconds: 0 };
+    drawTest();
+  }
+  const clock = seconds => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  function drawTest() {
+    const c = currentCatalog(), qs = qaTest.ids.map(id => c.questions.find(q => q.id === id)), points = qs.reduce((n, q) => n + q.points, 0);
+    view = 'qa-test'; renderShell('Test');
+    $('#main').innerHTML = `<section class="qa-test"><div class="qa-test-bar"><button class="back-link" data-action="qa-test-exit">${icon('back')}Abbrechen</button><div class="qa-test-title"><strong>${esc(c.title)}</strong><small id="qa-test-status"></small></div><span class="qa-timer" id="qa-timer">${icon('clock')}<span>00:00</span></span></div>
+      <ol class="qa-test-list">${qs.map((q, i) => `<li class="qa-test-item" style="--i:${Math.min(i, 10)}"><div class="qa-test-q"><span class="qa-num">${i + 1}</span><h2>${esc(q.q)}</h2>${q.points ? `<span class="qa-points">${formatPoints(q.points)} P.</span>` : ''}</div><textarea class="qa-typed" data-q="${esc(q.id)}" rows="3" placeholder="Deine Antwort …" aria-label="Antwort auf Frage ${i + 1}"></textarea></li>`).join('')}</ol>
+      <div class="qa-dock"><span id="qa-dock-status"></span><button class="button primary" data-action="qa-test-submit">Abgeben ${icon('check')}</button></div></section>`;
+    const status = () => {
+      const done = qaTest.ids.filter(id => (qaTest.answers[id] || '').trim()).length;
+      $('#qa-test-status').textContent = `${done} von ${qs.length} beantwortet · ${formatPoints(points)} Punkte`;
+      $('#qa-dock-status').textContent = `${done} / ${qs.length}`;
+    };
+    document.querySelectorAll('.qa-test-list .qa-typed').forEach(t => t.addEventListener('input', () => { qaTest.answers[t.dataset.q] = t.value; status(); }));
+    status();
+    if (typeof setInterval === 'function') testTimer = setInterval(() => { if (!qaTest || qaTest.phase !== 'write') return; qaTest.seconds = Math.round((Date.now() - qaTest.started) / 1000); const el = document.querySelector('#qa-timer span'); if (el) el.textContent = clock(qaTest.seconds); }, 1000);
+    requestAnimationFrame(() => document.querySelector('.qa-test-list .qa-typed')?.focus({ preventScroll: true }));
+  }
+  function submitTest() {
+    const empty = qaTest.ids.filter(id => !(qaTest.answers[id] || '').trim()).length;
+    const go = () => {
+      const c = currentCatalog();
+      qaTest.phase = 'grade'; qaTest.seconds = Math.round((Date.now() - qaTest.started) / 1000);
+      for (const id of qaTest.ids) { const q = c.questions.find(x => x.id === id); qaTest.awarded[id] = C.suggestPoints(qaTest.answers[id], q.answer, q.points); }
+      transition(drawGrading);
+    };
+    if (empty) return confirmAction('Test abgeben?', `${empty === 1 ? '1 Frage ist' : `${empty} Fragen sind`} noch leer und ${empty === 1 ? 'zählt' : 'zählen'} mit 0 Punkten.`, 'Abgeben', go);
+    go();
+  }
+  const testScore = () => { const c = currentCatalog(); let got = 0, max = 0; for (const id of qaTest.ids) { got += qaTest.awarded[id] || 0; max += c.questions.find(q => q.id === id).points; } return { got, max }; };
+  function drawGrading() {
+    const c = currentCatalog();
+    view = 'qa-test'; renderShell('Korrektur');
+    const { got, max } = testScore();
+    $('#main').innerHTML = `<section class="qa-test grading"><div class="qa-test-bar"><div class="qa-test-title"><strong>Korrektur</strong><small>Vergleiche mit der Musterlösung und passe die Punkte an.</small></div><div class="qa-score-live"><strong id="qa-score">${formatPoints(got)}</strong><span>/ ${formatPoints(max)}</span></div></div>
+      <ol class="qa-test-list">${qaTest.ids.map((id, i) => { const q = c.questions.find(x => x.id === id), given = (qaTest.answers[id] || '').trim(), cov = given ? C.keywordCoverage(given, q.answer) : null; return `<li class="qa-test-item" style="--i:${Math.min(i, 10)}"><div class="qa-test-q"><span class="qa-num">${i + 1}</span><h2>${esc(q.q)}</h2></div><div class="qa-compare"><div class="qa-given${given ? '' : ' empty'}"><div class="qa-solution-label">${icon('edit')}Deine Antwort</div>${given ? `<p>${esc(given).replace(/\n/g, '<br>')}</p>` : '<p>Keine Antwort</p>'}</div><div class="qa-solution"><div class="qa-solution-label">${icon('book')}Musterlösung${cov ? `<span class="qa-cov-pill">${cov.hits.size}/${cov.total} Begriffe</span>` : ''}</div><div class="qa-answer">${answerHtml(q.answer, given || null)}</div></div></div><div class="qa-grade-row"><span>Punkte</span><div class="qa-stepper"><button type="button" data-action="qa-points" data-q="${esc(id)}" data-delta="-0.5" aria-label="Halben Punkt abziehen">−</button><output data-out="${esc(id)}">${formatPoints(qaTest.awarded[id])}</output><span>/ ${formatPoints(q.points)}</span><button type="button" data-action="qa-points" data-q="${esc(id)}" data-delta="0.5" aria-label="Halben Punkt dazugeben">+</button></div></div></li>`; }).join('')}</ol>
+      <div class="qa-dock"><span>Vorschläge sind nur eine Hilfe, entscheide selbst.</span><button class="button primary" data-action="qa-test-finish">Ergebnis ansehen ${icon('arrow')}</button></div></section>`;
+  }
+  function changePoints(id, delta) {
+    const q = currentCatalog().questions.find(x => x.id === id);
+    qaTest.awarded[id] = Math.min(q.points, Math.max(0, (qaTest.awarded[id] || 0) + delta));
+    const out = document.querySelector(`[data-out="${window.CSS?.escape ? window.CSS.escape(id) : id}"]`);
+    if (out) { out.textContent = formatPoints(qaTest.awarded[id]); if (!reduced()) out.animate?.([{ transform: `translateY(${delta > 0 ? 6 : -6}px)`, opacity: 0.3 }, { transform: 'none', opacity: 1 }], { duration: 260, easing: 'cubic-bezier(.16,1,.3,1)' }); }
+    $('#qa-score').textContent = formatPoints(testScore().got);
+  }
+  function finishTest() {
+    const c = currentCatalog(), { got, max } = testScore(), percent = max ? Math.round(got / max * 100) : 0, now = Date.now();
+    for (const id of qaTest.ids) {
+      const q = c.questions.find(x => x.id === id); if (!q.points) continue;
+      const ratio = (qaTest.awarded[id] || 0) / q.points, old = c.progress[id];
+      c.progress[id] = { level: ratio >= 0.99 ? 3 : ratio >= 0.5 ? 2 : 1, seen: (Number(old?.seen) || 0) + 1, at: now };
+    }
+    c.test = { best: Math.max(Number(c.test?.best) || 0, percent), last: percent, total: max, at: now };
+    data.history[localDate()] = (Number(data.history[localDate()]) || 0) + qaTest.ids.length;
+    save();
+    const lost = qaTest.ids.map(id => c.questions.find(q => q.id === id)).filter(q => (qaTest.awarded[q.id] || 0) < q.points), seconds = qaTest.seconds, awarded = qaTest.awarded;
+    qaTest = null; view = 'qa-test'; renderShell('Ergebnis');
+    $('#main').innerHTML = `<section class="result-page qa-test-result"><div class="qa-score-ring">${ring(percent, `${formatPoints(got)} / ${formatPoints(max)} Punkte`)}</div><h1>${percent >= 90 ? 'Sehr stark' : percent >= 75 ? 'Gut gemacht' : percent >= 50 ? 'Auf gutem Weg' : 'Da geht noch was'}<span class="blue-dot">.</span></h1><p>${lost.length ? `Bei ${lost.length} ${lost.length === 1 ? 'Frage' : 'Fragen'} fehlen noch Punkte. Sie kommen beim Lernen jetzt zuerst dran.` : 'Volle Punktzahl. Alle Fragen sind jetzt sicher.'}</p><div class="result-stats"><div><strong>${formatPoints(got)}</strong><span>von ${formatPoints(max)} Punkten</span></div><div><strong>${percent}%</strong><span>${percent >= c.test.best && percent ? 'Bestwert' : `Bestwert ${c.test.best}%`}</span></div><div><strong>${clock(seconds)}</strong><span>Minuten</span></div></div>${lost.length ? `<div class="result-review qa-review"><h3>Hier fehlen Punkte</h3>${lost.map(q => `<div><span>${esc(q.q)}</span><span class="qa-lost">${formatPoints(awarded[q.id] || 0)} / ${formatPoints(q.points)}</span></div>`).join('')}</div>` : '<div class="perfect-note">Keine Fehler.</div>'}<div class="result-actions">${lost.length ? `<button class="button primary" data-action="qa-learn-weak">Schwächen lernen ${icon('arrow')}</button>` : ''}<button class="button ${lost.length ? 'secondary' : 'primary'}" data-action="qa-test">Neuer Test</button><button class="text-button" data-action="qa-open">Zum Katalog</button></div></section>`;
+  }
+  // ---- Creating and editing catalogues, also straight from a Word file. ----
+  async function docxText(file) {
+    const buf = new Uint8Array(await file.arrayBuffer()), dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    let end = -1;
+    for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { end = i; break; }
+    if (end < 0) throw new Error('Die Datei ist kein gültiges Word-Dokument (.docx).');
+    let p = dv.getUint32(end + 16, true);
+    for (let n = dv.getUint16(end + 10, true); n > 0; n--) {
+      const method = dv.getUint16(p + 10, true), size = dv.getUint32(p + 20, true), nameLength = dv.getUint16(p + 28, true), local = dv.getUint32(p + 42, true);
+      const name = new TextDecoder().decode(buf.subarray(p + 46, p + 46 + nameLength));
+      p += 46 + nameLength + dv.getUint16(p + 30, true) + dv.getUint16(p + 32, true);
+      if (name !== 'word/document.xml') continue;
+      const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true), raw = buf.slice(start, start + size);
+      if (method !== 0 && typeof DecompressionStream !== 'function') throw new Error('Dieser Browser kann Word-Dateien nicht lesen. Kopiere den Text stattdessen hinein.');
+      const bytes = method === 0 ? raw : new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+      const xml = new DOMParser().parseFromString(new TextDecoder().decode(bytes), 'application/xml');
+      return [...xml.getElementsByTagName('w:p')].map(par => {
+        let text = '';
+        for (const node of par.getElementsByTagName('*')) { if (node.tagName === 'w:t') text += node.textContent; else if (node.tagName === 'w:tab') text += '\t'; else if (node.tagName === 'w:br') text += '\n'; }
+        return (par.getElementsByTagName('w:numPr').length && text.trim() ? '• ' : '') + text;
+      }).join('\n');
+    }
+    throw new Error('In dieser Datei wurde kein Text gefunden.');
+  }
+  function openCatalogEditor(source = null) {
+    qaEditing = source; qaDraft = null;
+    const d = $('#import-dialog'), subjects = subjectList().filter(s => !sameSubject(s, VOCAB));
+    const preset = source?.subject || (sameSubject(subject, VOCAB) ? '' : subject);
+    d.innerHTML = `<div class="dialog-header"><div><h2 id="import-heading">${source ? 'Fragenkatalog bearbeiten' : 'Neuer Fragenkatalog'}</h2><p class="dialog-sub">Für jedes Fach: Fragen mit Antworten einfügen oder eine Word-Datei hochladen.</p></div><button class="icon-button" data-close="import-dialog" aria-label="Schließen">${icon('close')}</button></div><form id="qa-editor"><div id="qa-editor-source"><div class="form-grid"><label>Fach<input id="qa-subject" list="qa-subjects" maxlength="40" value="${esc(preset)}" placeholder="z. B. Geschichte" autocomplete="off"><datalist id="qa-subjects">${subjects.map(s => `<option value="${esc(s)}"></option>`).join('')}</datalist></label><label>Titel<input id="qa-title" maxlength="100" value="${esc(source?.title || '')}" placeholder="z. B. Test Kapitel 3"></label></div>
+      <div class="qa-editor-label"><label class="textarea-label" for="import-text">Fragen & Antworten</label><label class="text-button qa-upload">${icon('upload')}Word- oder Textdatei<input type="file" id="qa-file" accept=".docx,.txt,.md,text/plain" hidden></label></div><textarea id="import-text" placeholder="Was versteht man unter Bipolarität?   2 Punkte&#10;Zwei Staaten dominieren das Verhältnis mehrerer Staaten zueinander …&#10;&#10;Wie endete die Kubakrise?   2 Punkte&#10;Die UdSSR zog ihre Raketen aus Kuba ab …"></textarea><p class="dlg-format">Jede Frage in eine eigene Zeile, gern mit „2 Punkte“ am Ende, die Antwort darunter. Aufzählungen bleiben erhalten. Geht auch: „F: … / A: …“ oder Frage und Antwort als Block, getrennt durch eine Leerzeile.</p></div><div id="qa-editor-preview" hidden></div><div id="import-error" class="form-error" role="alert" hidden></div><div class="dialog-footer"><button class="button secondary" type="button" id="qa-editor-back" data-action="qa-editor-back" hidden>${icon('back')}Zurück</button><span class="import-privacy">${icon('lock')}Deine Inhalte bleiben privat.</span><button class="button primary" type="submit" id="qa-editor-submit">Fragen erkennen ${icon('arrow')}</button></div></form>`;
+    if (source) $('#import-text').value = C.serializeCatalog(source);
+    $('#qa-file').addEventListener('change', async e => {
+      const file = e.target.files?.[0]; if (!file) return;
+      $('#import-error').hidden = true;
+      try {
+        $('#import-text').value = /\.docx$/i.test(file.name) ? await docxText(file) : await file.text();
+        if (!$('#qa-title').value.trim()) $('#qa-title').value = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').slice(0, 100);
+        toast('Datei eingelesen. Prüfe den Text und tippe auf „Fragen erkennen“.');
+      } catch (error) { importError(error.message || 'Die Datei konnte nicht gelesen werden.'); }
+      e.target.value = '';
+    });
+    $('#qa-editor').addEventListener('submit', e => {
+      e.preventDefault(); $('#import-error').hidden = true;
+      try {
+        if (qaDraft) return saveCatalogDraft();
+        if (!$('#qa-subject').value.trim()) throw new Error('Gib ein Fach ein, z. B. Geschichte.');
+        qaDraft = C.parseCatalog($('#import-text').value);
+        drawCatalogPreview();
+      } catch (error) { importError(error.message); }
+    });
+    d.showModal();
+  }
+  function drawCatalogPreview() {
+    $('#qa-editor-source').hidden = true; $('#qa-editor-preview').hidden = false; $('#qa-editor-back').hidden = false;
+    $('#qa-editor-submit').innerHTML = `Katalog speichern ${icon('check')}`;
+    const points = qaDraft.reduce((n, q) => n + q.points, 0);
+    $('#qa-editor-preview').innerHTML = `<div class="preview-heading"><strong>${qaDraft.length} ${qaDraft.length === 1 ? 'Frage' : 'Fragen'} erkannt${points ? ` · ${formatPoints(points)} Punkte` : ''}</strong><span>Stimmt etwas nicht, geh zurück und korrigiere den Text.</span></div><ol class="qa-preview">${qaDraft.map(q => `<li><div><strong>${esc(q.q)}</strong>${q.points ? `<span class="qa-points">${formatPoints(q.points)} P.</span>` : ''}</div><div class="qa-answer">${answerHtml(q.answer)}</div></li>`).join('')}</ol>`;
+  }
+  function saveCatalogDraft() {
+    const name = $('#qa-subject').value.trim().slice(0, 40), existing = subjectList().find(s => sameSubject(s, name)) || name;
+    const old = qaEditing, questions = qaDraft.map(q => ({ ...q, id: old?.questions.find(o => o.q === q.q)?.id }));
+    const catalog = C.validateCatalog({ id: old?.id, subject: existing, title: $('#qa-title').value.trim() || `${existing} · Fragen`, emoji: SUBJECT_EMOJI[C.normalize(existing)] || subjectCatalogs(existing)[0]?.emoji || old?.emoji || '📘', description: old?.description || '', created: old?.created, questions, progress: old?.progress, test: old?.test }, !!old);
+    if (!catalog) throw new Error('Keine gültigen Fragen gefunden.');
+    if (old) data.catalogs[data.catalogs.findIndex(c => c.id === old.id)] = catalog; else data.catalogs.push(catalog);
+    catalogId = catalog.id; subject = catalog.subject; qaDraft = null;
+    save(); $('#import-dialog').close(); syncSubjectUi(); transition(drawCatalog);
+    toast(old ? 'Fragenkatalog gespeichert.' : `${catalog.questions.length} Fragen in „${catalog.subject}“ gespeichert.`);
+  }
+  function learnInSubject() {
+    if (view === 'qa-learn' && qa) return;
+    const list = subjectCatalogs(); if (!list.length) return openCatalogEditor();
+    if (!currentCatalog() || !sameSubject(currentCatalog().subject, subject)) catalogId = [...list].sort((a, b) => lastPracticed(b) - lastPracticed(a))[0].id;
+    startQa(C.catalogStats(currentCatalog()).safe < currentCatalog().questions.length && C.catalogStats(currentCatalog()).safe > 0);
+  }
+  function testInSubject() {
+    const list = subjectCatalogs(); if (!list.length) return openCatalogEditor();
+    if (!currentCatalog() || !sameSubject(currentCatalog().subject, subject)) catalogId = [...list].sort((a, b) => lastPracticed(b) - lastPracticed(a))[0].id;
+    drawTestSetup();
+  }
   const DIALOG_PROMPT = 'Schreib einen Dialog auf Spanisch zum Thema [Thema hier eintragen]. Gib nur den Dialog aus, ohne Überschrift und ohne Erklärung. Schreib jede Zeile genau so:\nSprecher: spanischer Satz | deutsche Übersetzung\n\nBeispiel:\nA: ¡Hola! ¿Qué tal? | Hallo! Wie geht es dir?\nB: Muy bien, gracias. | Sehr gut, danke.';
   let dlgEditorSource = null, dlgDraft = null, dlgSkipped = [];
   function openDialogEditor(source = null) {
@@ -607,12 +952,18 @@
         if (copy) { if (data.dialogs.some(d => d.title === copy.title)) copy.title += ' (Import)'; data.dialogs.push(copy); }
       }
       data.grammar = C.mergeStates({ grammar: data.grammar }, { grammar: backup.grammar }).grammar;
+      for (const raw of Array.isArray(backup.catalogs) ? backup.catalogs : []) {
+        const builtIn = data.catalogs.find(c => c.seed && c.id === raw?.id);
+        if (builtIn) { Object.assign(builtIn, C.mergeCatalogs([builtIn], [C.validateCatalog({ ...raw, questions: builtIn.questions })].filter(Boolean))[0]); continue; }
+        const copy = C.validateCatalog({ ...raw, id: undefined, seed: false });
+        if (copy) { if (data.catalogs.some(c => c.title === copy.title)) copy.title += ' (Import)'; data.catalogs.push(copy); }
+      }
       save(); $('#import-dialog').close(); drawLibrary(); toast(`${sets.length} Lernsets samt Fortschritt importiert.`);
     } catch (error) { importError(error.message); }
   }
   function download(name, text, type) { const blob = new Blob([text], { type }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000); }
   function exportSet() { const s = currentSet(); download(s.title.replace(/[<>:"/\\|?*]/g, '-') + '.txt', '\uFEFF' + C.serializeTerms(s.terms), 'text/plain;charset=utf-8'); toast('Vokabelliste exportiert.'); }
-  function exportBackup() { download(`wortwechsel-sicherung-${localDate()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sets: data.sets, dialogs: data.dialogs, grammar: data.grammar, settings: data.settings }, null, 2), 'application/json'); toast('Sicherung exportiert. Über „Neues Lernset“ wieder importieren.'); }
+  function exportBackup() { download(`wortwechsel-sicherung-${localDate()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sets: data.sets, dialogs: data.dialogs, grammar: data.grammar, catalogs: data.catalogs, settings: data.settings }, null, 2), 'application/json'); toast('Sicherung exportiert. Über „Neues Lernset“ wieder importieren.'); }
   function confirmAction(title, text, label, fn) {
     const d = $('#confirm-dialog');
     d.innerHTML = `<div class="dialog-header"><h2 id="confirm-heading">${esc(title)}</h2><button class="icon-button" data-close="confirm-dialog" aria-label="Schließen">${icon('close')}</button></div><p>${esc(text)}</p><div class="dialog-footer"><button class="button secondary" data-close="confirm-dialog">Abbrechen</button><button class="button primary" id="confirm-action">${esc(label)}</button></div>`;
@@ -620,12 +971,35 @@
   }
   document.addEventListener('click', e => {
     const close = e.target.closest('[data-close]'); if (close) return document.getElementById(close.dataset.close).close();
+    const tab = e.target.closest('[data-subject]'); if (tab) return switchSubject(tab.dataset.subject);
     const btn = e.target.closest('[data-action]'); if (!btn || btn.disabled) return;
     const action = btn.dataset.action;
     if (btn.dataset.id) { selectedId = btn.dataset.id; save(); }
     if (btn.dataset.table) grammarId = btn.dataset.table;
+    if (btn.dataset.catalog) catalogId = btn.dataset.catalog;
     if (btn.dataset.dialog) { if (dialogId !== btn.dataset.dialog) dlgPart = 'all'; dialogId = btn.dataset.dialog; }
     switch (action) {
+      case 'qa-home': return transition(drawCatalogs);
+      case 'qa-open': return btn.dataset.catalog ? transition(drawCatalog) : drawCatalog();
+      case 'qa-new': return openCatalogEditor();
+      case 'qa-edit': return openCatalogEditor(currentCatalog());
+      case 'qa-learn': return startQa(false);
+      case 'qa-learn-weak': return startQa(true);
+      case 'qa-reveal': return revealQa();
+      case 'qa-rate': return rateQa(btn.dataset.rating);
+      case 'qa-exit': return confirmAction('Lernrunde beenden?', 'Bewertete Fragen sind schon gespeichert.', 'Zum Katalog', drawCatalog);
+      case 'qa-test': return drawTestSetup();
+      case 'qa-test-start': return startTest(btn.dataset.size);
+      case 'qa-test-submit': return submitTest();
+      case 'qa-test-exit': return confirmAction('Test abbrechen?', 'Deine Antworten in diesem Test werden nicht gespeichert.', 'Test abbrechen', drawCatalog);
+      case 'qa-points': return changePoints(btn.dataset.q, Number(btn.dataset.delta));
+      case 'qa-test-finish': return finishTest();
+      case 'qa-toggle': return toggleQaItem(btn.closest('.qa-item'));
+      case 'qa-expand-all': { const items = [...document.querySelectorAll('.qa-item')], open = !items.every(i => i.classList.contains('open')); items.forEach((item, i) => setTimeout(() => toggleQaItem(item, open), reduced() ? 0 : i * 28)); btn.textContent = open ? 'Alle zuklappen' : 'Alle aufklappen'; return; }
+      case 'qa-filter': qaFilter = btn.dataset.filter; document.querySelectorAll('[data-action="qa-filter"]').forEach(b => b.setAttribute('aria-pressed', String(b === btn))); $('#qa-list').innerHTML = qaListHtml(currentCatalog()); return;
+      case 'qa-editor-back': $('#import-text').value = C.serializeCatalog({ questions: qaDraft }); qaDraft = null; $('#qa-editor-source').hidden = false; $('#qa-editor-preview').hidden = true; $('#qa-editor-preview').innerHTML = ''; $('#qa-editor-back').hidden = true; $('#qa-editor-submit').innerHTML = `Fragen erkennen ${icon('arrow')}`; return;
+      case 'qa-reset': return confirmAction('Von vorne anfangen?', 'Der Lernstand und die Testergebnisse dieses Katalogs werden zurückgesetzt. Die Fragen bleiben erhalten.', 'Fortschritt zurücksetzen', () => { const c = currentCatalog(); c.progress = {}; c.test = { best: 0, last: 0, total: 0, at: 0 }; save(); drawCatalog(); toast('Fortschritt zurückgesetzt.'); });
+      case 'qa-delete': return confirmAction('Katalog löschen?', `„${currentCatalog().title}“ wird entfernt. Exportiere bei Bedarf vorher eine Sicherung.`, 'Katalog löschen', () => { data.catalogs = data.catalogs.filter(c => c.id !== catalogId); save(); drawCatalogs(); toast('Fragenkatalog gelöscht.'); });
       case 'gram-list': return drawGrammarList();
       case 'gram-open': return drawGrammar();
       case 'gram-start': return startGrammar(Number(btn.dataset.level));
@@ -691,10 +1065,16 @@
       case 'reset': return confirmAction('Von vorne anfangen?', 'Alle Lernschritte in diesem Set werden zurückgesetzt. Die Begriffe bleiben erhalten.', 'Fortschritt zurücksetzen', () => { currentSet().terms.forEach(t => delete t.progress); save(); drawSet(); toast('Fortschritt zurückgesetzt.'); });
     }
   });
-  $('.brand').addEventListener('click', e => { e.preventDefault(); drawLibrary(); });
+  $('.brand').addEventListener('click', e => { e.preventDefault(); sameSubject(subject, VOCAB) ? drawLibrary() : drawCatalogs(); });
   $('[data-view="library"]').addEventListener('click', drawLibrary);
   $('[data-view="dialogs"]').addEventListener('click', drawDialogs);
   $('[data-view="grammar"]').addEventListener('click', drawGrammarList);
+  document.querySelectorAll('[data-view="catalogs"]').forEach(el => el.addEventListener('click', () => { if (el.id === 'nav-vocab-catalogs') subject = VOCAB; transition(drawCatalogs); }));
+  $('#nav-qa-learn').addEventListener('click', learnInSubject);
+  $('#nav-qa-test').addEventListener('click', testInSubject);
+  $('#nav-qa-new').addEventListener('click', () => openCatalogEditor());
+  window.addEventListener('resize', () => moveSubjectThumb(true));
+  document.fonts?.ready?.then(() => moveSubjectThumb(true));
   $('#nav-practice').addEventListener('click', () => { if (view === 'learn' && session?.current) return; startLearning(); });
   $('#nav-import').addEventListener('click', () => openImport());
   $('#backup-btn').addEventListener('click', exportBackup);
@@ -708,6 +1088,11 @@
       if (session.answered && e.key === 'Enter') { e.preventDefault(); return nextQuestion(); }
       if (!input && !session.answered && session.current.mode === 'mc' && /^[1-4]$/.test(e.key)) { const value = session.current.options[Number(e.key) - 1]; if (value) { e.preventDefault(); submitAnswer(value); } }
     }
+    if (view === 'qa-learn' && qa && !e.repeat) {
+      if (!qa.revealed && !input && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); return revealQa(); }
+      const rating = { 1: 'again', 2: 'partly', 3: 'known' }[e.key];
+      if (qa.revealed && rating) { e.preventDefault(); return rateQa(rating); }
+    }
     if (view === 'flashcards' && flash && !input) {
       if (e.key === ' ') { e.preventDefault(); flash.flipped = !flash.flipped; drawFlashcard(); }
       if (e.key === 'ArrowRight') { e.preventDefault(); moveCard(1); }
@@ -718,9 +1103,9 @@
   window.WWApp = {
     toast,
     snapshot: () => data,
-    canApply: () => !storageBlocked && !session?.current && !dlg && !gram && !document.querySelector('dialog[open]'),
+    canApply: () => !storageBlocked && !session?.current && !dlg && !gram && !qa && !qaTest && !document.querySelector('dialog[open]'),
     apply(raw) {
-      const next = hydrate(raw); next.dialogs = mergeDialogs(next.dialogs); next.grammar = C.validateGrammarProgress(next.grammar);
+      const next = hydrate(raw); next.dialogs = mergeDialogs(next.dialogs); next.grammar = C.validateGrammarProgress(next.grammar); next.catalogs = withCatalogSeeds(next.catalogs);
       data = next;
       if (!data.sets.some(s => s.id === selectedId)) selectedId = data.selectedId && data.sets.some(s => s.id === data.selectedId) ? data.selectedId : data.sets[0]?.id;
       applyingRemote = true; save(); applyingRemote = false;
@@ -730,9 +1115,12 @@
       else if (view === 'dialogs' && document.querySelector('.dialog-grid')) drawDialogs();
       else if (view === 'grammar' && document.querySelector('.dialog-grid')) drawGrammarList();
       else if (view === 'grammar' && document.querySelector('.gram-table')) drawGrammar();
+      else if (view === 'catalogs') drawCatalogs();
+      else if (view === 'catalog') drawCatalog();
       else renderShell();
     },
   };
   $('#storage-warning').hidden = !storageFailed;
-  save(); hydrateIcons(); drawLibrary();
+  save(); hydrateIcons();
+  if (!sameSubject(subject, VOCAB) && subjectCatalogs().length) drawCatalogs(); else drawLibrary();
 })();

@@ -311,6 +311,7 @@
     const grammar = validateGrammarProgress(other?.grammar);
     for (const [id, p] of Object.entries(validateGrammarProgress(base?.grammar))) grammar[id] = { best: Math.max(grammar[id]?.best || 0, p.best), practiced: [grammar[id]?.practiced || '', p.practiced].sort().at(-1) };
     out.grammar = grammar;
+    if (base?.catalogs || other?.catalogs) out.catalogs = mergeCatalogs(base?.catalogs, other?.catalogs);
     return out;
   }
   // Grammar tables. A gap is one field to fill: a table cell or the missing word of a sentence.
@@ -348,5 +349,126 @@
     const out = all.filter(i => role === 'all' || dialog.lines[i].speaker === role);
     return out.length ? out : all;
   }
-  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, mergeStates, dialogParts, dialogSpeakers, dialogQueue, grammarColumns, grammarCells, grammarGaps, checkGap, validateGrammarProgress };
+  // ---- Question catalogues (Fragenkataloge): open questions with a model answer, e.g. for history tests. ----
+  const QA_POINTS = /\s*[([–-]?\s*(\d{1,2})\s*(?:punkte?|pkt\.?|p\.?)\s*[)\]]?\s*$/i;
+  const QA_BULLET = /^\s*(?:[•●▪◦‣∙·*–-]|\d{1,2}[.)])\s+/;
+  const cleanLine = line => String(line).replace(/ /g, ' ').replace(/\t+/g, ' ').replace(/ {2,}/g, ' ').trim();
+  // Accepts pasted Word text ("Frage   2 Punkte" followed by the answer), "F: … / A: …" pairs or blocks separated by blank lines.
+  function parseCatalog(text) {
+    const raw = String(text ?? '').replace(/\r\n?/g, '\n').split('\n');
+    const questions = [];
+    const push = (q, points, answer) => {
+      q = cleanLine(q).replace(QA_BULLET, '').trim();
+      const lines = answer.map(l => cleanLine(l)).filter(Boolean).map(l => QA_BULLET.test(l) ? '• ' + l.replace(QA_BULLET, '').trim() : l);
+      if (q && lines.length) questions.push({ q: q.slice(0, 500), points: Math.min(20, Math.max(0, points || 0)), answer: lines.join('\n').slice(0, 4000) });
+    };
+    const lines = raw.map(cleanLine);
+    if (lines.some(l => QA_POINTS.test(l) && /[?!:.„“"a-zäöüß]\s*[([–-]?\s*\d{1,2}\s*(?:punkte?|pkt\.?|p\.?)\s*[)\]]?$/i.test(l))) {
+      let current = null;
+      for (const line of lines) {
+        const m = line.match(QA_POINTS);
+        if (m && line.replace(QA_POINTS, '').trim().length > 3) { if (current) push(current.q, current.points, current.answer); current = { q: line.replace(QA_POINTS, ''), points: Number(m[1]), answer: [] }; }
+        else if (current) current.answer.push(line);
+      }
+      if (current) push(current.q, current.points, current.answer);
+    } else if (lines.some(l => /^(?:f|frage|q)\s*[:.)]/i.test(l))) {
+      let current = null;
+      for (const line of lines) {
+        if (/^(?:f|frage|q)\s*[:.)]/i.test(line)) { if (current) push(current.q, current.points, current.answer); current = { q: line.replace(/^(?:f|frage|q)\s*[:.)]\s*/i, ''), points: 0, answer: [] }; }
+        else if (current) current.answer.push(line.replace(/^(?:a|antwort)\s*[:.)]\s*/i, ''));
+      }
+      if (current) push(current.q, current.points, current.answer);
+    } else {
+      for (const block of raw.join('\n').split(/\n\s*\n/)) {
+        const [first = '', ...rest] = block.split('\n').map(cleanLine).filter(Boolean);
+        const pipe = first.indexOf('|');
+        if (!rest.length && pipe > 0) push(first.slice(0, pipe), 0, [first.slice(pipe + 1)]);
+        else push(first, 0, rest);
+      }
+    }
+    if (!questions.length) throw new Error('Keine Fragen erkannt. Schreib jede Frage in eine eigene Zeile (gern mit „2 Punkte“ am Ende) und die Antwort darunter.');
+    return questions.slice(0, 300);
+  }
+  function serializeCatalog(catalog) { return catalog.questions.map(q => `${q.q}${q.points ? ` (${q.points} ${q.points === 1 ? 'Punkt' : 'Punkte'})` : ''}\n${q.answer}`).join('\n\n'); }
+  // Bullet lines start with "• ", everything else is running text.
+  function answerParts(answer) { return String(answer).split('\n').filter(l => l.trim()).map(l => l.startsWith('• ') ? { bullet: true, text: l.slice(2) } : { bullet: false, text: l }); }
+  const QA_STOP = new Set('aber alle allem allen aller alles also andere anderen anfangs auch auf aus bei beim bis bzw dabei daher damit dann darum dass dem den denen der des die dies diese diesem diesen dieser dort durch eine einem einen einer eines einige einigen entweder erst etwa etwas gegen haben hatte hatten heute hier ihre ihrem ihren ihrer immer indem jede jedem jeden jeder kann keine mehr meist mehrere mit nach neben nicht noch nun nur oder ohne sehr seine seinem seinen seiner sich sind sollte sowie über unter und uns viele vom von vor wann war waren warum was weil wenn werden wie wieder wird wobei wurde wurden zum zur zwei drei zwischen zusätzlich zudem sogar dorthin erfolgte zweiten ab'.split(' '));
+  const qaStem = word => { const n = normalize(word); return n.length > 6 ? n.slice(0, 6) : n; };
+  // Words that carry the content: long words, names, abbreviations and years.
+  function isKeyword(word) {
+    const n = normalize(word);
+    if (QA_STOP.has(n)) return false;
+    return n.length >= 5 || /^\d{4}$/.test(n) || /[A-ZÄÖÜ].*[A-ZÄÖÜ]/.test(word) || (/^[A-ZÄÖÜ]/.test(word) && n.length >= 4);
+  }
+  const wordRe = () => /[\p{L}\d]+/gu;
+  function answerKeywords(answer) {
+    const seen = new Map();
+    for (const [word] of String(answer).matchAll(wordRe())) if (isKeyword(word)) { const stem = qaStem(word); if (!seen.has(stem)) seen.set(stem, word); }
+    return [...seen.entries()].map(([stem, word]) => ({ stem, word }));
+  }
+  // How much of the model answer shows up in what the learner wrote. Only a hint for self-assessment.
+  function keywordCoverage(given, answer) {
+    const keys = answerKeywords(answer), have = new Set();
+    for (const [word] of String(given ?? '').matchAll(wordRe())) have.add(qaStem(word));
+    const hits = new Set(keys.filter(k => have.has(k.stem)).map(k => k.stem));
+    return { total: keys.length, hits, ratio: keys.length ? hits.size / keys.length : 0 };
+  }
+  function suggestPoints(given, answer, points) {
+    if (!String(given ?? '').trim()) return 0;
+    const ratio = keywordCoverage(given, answer).ratio;
+    return Math.min(points, Math.round(points * Math.min(1, ratio * 1.6) * 2) / 2);
+  }
+  // level: 0 new, 1 needs practice, 2 almost, 3 safe. "at" decides which device wins when merging.
+  function rateQuestion(state, rating, now = Date.now()) {
+    const level = Number(state?.level) || 0;
+    const next = rating === 'known' ? Math.min(3, Math.max(level + 1, 2)) : rating === 'partly' ? 2 : 1;
+    return { level: next, seen: (Number(state?.seen) || 0) + 1, at: now };
+  }
+  function validateCatalog(raw, preserveIds = true) {
+    if (!raw || !Array.isArray(raw.questions)) return null;
+    const ids = new Set();
+    const questions = raw.questions.filter(q => q && String(q.q ?? '').trim() && String(q.answer ?? '').trim()).slice(0, 300).map(q => {
+      let id = preserveIds && typeof q.id === 'string' && q.id ? q.id.slice(0, 40) : uid();
+      if (ids.has(id)) id = uid(); ids.add(id);
+      return { id, q: String(q.q).trim().slice(0, 500), points: Math.min(20, Math.max(0, Math.trunc(Number(q.points)) || 0)), answer: String(q.answer).trim().slice(0, 4000) };
+    });
+    if (!questions.length) return null;
+    const progress = {};
+    for (const q of questions) {
+      const p = raw.progress?.[q.id];
+      if (p && typeof p === 'object') progress[q.id] = { level: Math.min(3, Math.max(0, Math.trunc(Number(p.level)) || 0)), seen: Math.max(0, Math.trunc(Number(p.seen)) || 0), at: Number(p.at) || 0 };
+    }
+    const t = raw.test && typeof raw.test === 'object' ? raw.test : {};
+    const test = { best: Math.max(0, Number(t.best) || 0), last: Math.max(0, Number(t.last) || 0), total: Math.max(0, Number(t.total) || 0), at: Number(t.at) || 0 };
+    return { id: preserveIds && typeof raw.id === 'string' ? raw.id.slice(0, 60) : uid(), ...(raw.seed ? { seed: true } : {}), subject: String(raw.subject || 'Allgemein').trim().slice(0, 40) || 'Allgemein', title: String(raw.title || 'Fragenkatalog').slice(0, 100), emoji: String(raw.emoji || '📘').slice(0, 8), description: String(raw.description || '').slice(0, 250), created: Number(raw.created) || Date.now(), questions, progress, test };
+  }
+  function catalogStats(catalog) {
+    const out = { total: catalog.questions.length, points: 0, safe: 0, almost: 0, practice: 0, fresh: 0 };
+    for (const q of catalog.questions) {
+      out.points += q.points;
+      const level = catalog.progress?.[q.id]?.level || 0;
+      if (level >= 3) out.safe++; else if (level === 2) out.almost++; else if (level === 1) out.practice++; else out.fresh++;
+    }
+    out.progress = out.total ? Math.round((out.safe + out.almost * 0.5) / out.total * 100) : 0;
+    return out;
+  }
+  // Weakest questions first, new ones in their original order, so a round follows the catalogue when nothing is known yet.
+  function catalogQueue(catalog, onlyWeak = false, random = Math.random) {
+    const level = q => catalog.progress?.[q.id]?.level || 0;
+    const pool = catalog.questions.filter(q => !onlyWeak || level(q) < 3);
+    const order = [1, 0, 2, 3];
+    return order.flatMap(l => { const group = pool.filter(q => level(q) === l); return l === 0 ? group : shuffle(group, random); }).map(q => q.id);
+  }
+  function mergeCatalogs(base, other) {
+    const out = (Array.isArray(base) ? base : []).map(c => ({ ...c, progress: { ...(c.progress || {}) }, test: { ...(c.test || {}) } }));
+    for (const catalog of Array.isArray(other) ? other : []) {
+      const match = out.find(c => c.id === catalog?.id);
+      if (!match) { out.push(catalog); continue; }
+      for (const [id, p] of Object.entries(catalog.progress || {})) if (!match.progress[id] || (Number(p?.at) || 0) > (Number(match.progress[id].at) || 0)) match.progress[id] = p;
+      const a = match.test, b = catalog.test || {};
+      match.test = { best: Math.max(Number(a.best) || 0, Number(b.best) || 0), total: Math.max(Number(a.total) || 0, Number(b.total) || 0), ...((Number(b.at) || 0) > (Number(a.at) || 0) ? { last: b.last, at: b.at } : { last: a.last, at: a.at }) };
+    }
+    return out;
+  }
+  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, mergeStates, dialogParts, dialogSpeakers, dialogQueue, grammarColumns, grammarCells, grammarGaps, checkGap, validateGrammarProgress, parseCatalog, serializeCatalog, qaStem, answerParts, answerKeywords, keywordCoverage, suggestPoints, rateQuestion, validateCatalog, catalogStats, catalogQueue, mergeCatalogs };
 });
