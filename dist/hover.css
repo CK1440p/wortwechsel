@@ -1,0 +1,127 @@
+/* Hover layer. Loaded last. hover.js feeds --hx/--hy (cursor in px), --mgx/--mgy (magnetic pull) and --trx/--try (tilt). */
+@property --spot{syntax:'<number>';inherits:false;initial-value:0}
+:root{--snap:cubic-bezier(.34,1.56,.64,1);--glide:cubic-bezier(.22,1,.36,1);--spot-color:#7659ed;--ring-color:#8d74ff}
+:root[data-theme="dark"]{--spot-color:#a997ff;--ring-color:#b9a8ff}
+
+@media (hover:hover) and (pointer:fine){
+  /* ---------- Shared: everything with a spotlight is its own stacking context ---------- */
+  :is(.button,.icon-button,.round-button,.account-button,.qa-filter-chip,.accent-keys button,.qa-stepper button,.new-set-card,.dialog-card,.choice-button,.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.flashcard,.upload-zone,.term-row,.radio-card){position:relative;isolation:isolate}
+
+  /* ---------- Magnetic buttons ---------- */
+  html[data-theme] body :is(.button,.icon-button,.round-button,.account-button,.qa-filter-chip,.qa-stepper button,.accent-keys button){
+    translate:var(--mgx,0px) var(--mgy,0px);
+    transition:background-color .35s var(--glide),color .3s,border-color .35s,box-shadow .5s var(--glide),transform .55s var(--snap),translate .8s var(--snap),scale .35s var(--snap),filter .3s,--spot .45s var(--glide)}
+  html[data-theme] body :is(.button,.icon-button,.round-button,.account-button,.qa-filter-chip,.qa-stepper button,.accent-keys button).is-magnet{transition:background-color .35s var(--glide),color .3s,border-color .35s,box-shadow .5s var(--glide),transform .55s var(--snap),translate .16s linear,scale .35s var(--snap),filter .3s,--spot .45s var(--glide)}
+  /* Content drifts a little further than the button itself: a quiet parallax. */
+  :is(.button,.icon-button,.round-button,.account-button)>:is(.icon,span,svg){translate:calc(var(--mgx,0px) * .45) calc(var(--mgy,0px) * .45);transition:translate .8s var(--snap),transform .5s var(--snap)}
+  :is(.button,.icon-button,.round-button,.account-button).is-magnet>:is(.icon,span,svg){transition:translate .16s linear,transform .5s var(--snap)}
+
+  /* ---------- Spotlight fill on light buttons and chips ---------- */
+  html[data-theme] body :is(.button.secondary,.button.ghost,.icon-button,.round-button,.qa-filter-chip:not([aria-pressed="true"]),.accent-keys button,.qa-stepper button,.account-button)::before{
+    content:'';position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;opacity:var(--spot);
+    background:radial-gradient(90px circle at var(--hx,50%) var(--hy,50%),color-mix(in srgb,var(--spot-color) 26%,transparent),transparent 75%)}
+  html[data-theme] body :is(.button.secondary,.button.ghost,.icon-button,.round-button,.qa-filter-chip,.accent-keys button,.qa-stepper button,.account-button):hover{--spot:1}
+  html[data-theme] body :is(.button.secondary,.icon-button,.qa-filter-chip:not([aria-pressed="true"])):hover{border-color:color-mix(in srgb,var(--spot-color) 45%,var(--border));color:var(--text);box-shadow:0 6px 22px -6px color-mix(in srgb,var(--spot-color) 40%,transparent);transform:translateY(-2px)}
+  html[data-theme] body .icon-button:hover{background-color:var(--surface)}
+  html[data-theme] body .icon-button:hover>.icon,html[data-theme] body .icon-button:hover>span>.icon{transform:scale(1.14) rotate(-8deg)}
+  html[data-theme] body .theme-toggle:hover>.icon{transform:scale(1.15) rotate(25deg)}
+  html[data-theme] body .round-button:hover{transform:scale(1.12);box-shadow:0 8px 24px -4px color-mix(in srgb,var(--spot-color) 60%,transparent)}
+  html[data-theme] body .round-button:hover>.icon{transform:translateX(2px)}
+
+  /* ---------- Filled buttons: a light that follows the cursor plus one sheen sweep ---------- */
+  html[data-theme] body :is(.button.primary,.button.white,.button.glass,.button.success){overflow:hidden}
+  html[data-theme] body :is(.button.primary,.button.white,.button.glass,.button.success)::before{
+    content:'';position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;opacity:var(--spot);
+    background:radial-gradient(110px circle at var(--hx,50%) var(--hy,50%),#ffffff59,transparent 70%)}
+  html[data-theme] body .button.white::before{background:radial-gradient(110px circle at var(--hx,50%) var(--hy,50%),color-mix(in srgb,var(--spot-color) 22%,transparent),transparent 70%)}
+  html[data-theme] body :is(.button.primary,.button.white,.button.glass,.button.success)::after{
+    content:'';position:absolute;top:-50%;bottom:-50%;left:-60%;width:40%;z-index:-1;pointer-events:none;
+    background:linear-gradient(100deg,transparent,#ffffff55,transparent);transform:skewX(-18deg) translateX(0);opacity:0}
+  html[data-theme] body :is(.button.primary,.button.white,.button.glass,.button.success):hover{--spot:1;transform:translateY(-3px) scale(1.02)}
+  html[data-theme] body :is(.button.primary,.button.white,.button.glass,.button.success):hover::after{animation:sheen .9s var(--glide)}
+  html[data-theme] body .button.primary:hover{box-shadow:0 14px 34px -8px #7962ffaa,0 0 0 1px #ffffff22 inset}
+  html[data-theme] body .button.white:hover{box-shadow:0 14px 34px -8px #0b0d1666}
+  @keyframes sheen{0%{opacity:0;transform:skewX(-18deg) translateX(0)}20%{opacity:1}100%{opacity:0;transform:skewX(-18deg) translateX(420%)}}
+  html[data-theme] body .button:active{scale:.96;transition-duration:.1s}
+
+  /* ---------- Cards: glowing ring that follows the cursor, soft fill, lift ---------- */
+  html[data-theme] body :is(.new-set-card,.dialog-card,.choice-button,.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.flashcard,.upload-zone,.radio-card)::before,
+  html[data-theme] body .set-card::after{
+    content:'';position:absolute;inset:-1px;z-index:2;border-radius:inherit;pointer-events:none;padding:1.5px;opacity:var(--spot);
+    background:radial-gradient(220px circle at var(--hx,50%) var(--hy,50%),var(--ring-color),color-mix(in srgb,var(--ring-color) 45%,transparent) 45%,transparent 70%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
+  html[data-theme] body :is(.set-card,.new-set-card,.dialog-card,.choice-button,.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.flashcard,.upload-zone,.radio-card,.progress-card){
+    background-image:radial-gradient(380px circle at var(--hx,50%) var(--hy,50%),color-mix(in srgb,var(--spot-color) calc(var(--spot) * 12%),transparent),transparent 70%);
+    transition:transform .6s var(--snap),box-shadow .6s var(--glide),border-color .4s,background-color .4s,--spot .5s var(--glide)}
+  html[data-theme] body :is(.set-card,.new-set-card,.dialog-card,.choice-button:not(:disabled),.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.flashcard,.upload-zone,.radio-card,.progress-card):hover{--spot:1;box-shadow:0 2px 6px #1a22440d,0 24px 60px -18px color-mix(in srgb,var(--spot-color) 38%,transparent)}
+  html[data-theme] body .set-card:hover{transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-6px)}
+  html[data-theme] body .new-set-card:hover{transform:translateY(-6px) scale(1.01)}
+  html[data-theme] body .new-set-card:hover .new-set-icon{transform:rotate(90deg) scale(1.15)}
+  html[data-theme] body :is(.dialog-card,.qa-test-option,.qa-rate-btn){transform:perspective(800px) rotateX(var(--trx,0deg)) rotateY(var(--try,0deg))}
+  html[data-theme] body :is(.dialog-card,.qa-test-option,.qa-rate-btn).is-tilt{transition:transform .2s linear,box-shadow .6s var(--glide),border-color .4s,background-color .4s,--spot .5s var(--glide)}
+  html[data-theme] body :is(.dialog-card,.qa-test-option):hover{transform:perspective(800px) rotateX(var(--trx,0deg)) rotateY(var(--try,0deg)) translateY(-6px)}
+  html[data-theme] body .qa-rate-btn:hover{transform:perspective(800px) rotateX(var(--trx,0deg)) rotateY(var(--try,0deg)) translateY(-4px)}
+  html[data-theme] body .qa-rate-btn:active{transform:scale(.96)}
+  html[data-theme] body .choice-button:not(:disabled):hover{transform:translateY(-4px) scale(1.01)}
+  html[data-theme] body .choice-button:not(:disabled):hover .choice-key{transform:scale(1.15) rotate(-6deg);background:var(--spot-color);color:#fff;border-color:transparent}
+  .choice-key{transition:transform .5s var(--snap),background .3s,color .3s}
+  html[data-theme] body .qa-item:hover{transform:translateY(-2px)}
+  html[data-theme] body .qa-test-item:hover{border-color:color-mix(in srgb,var(--spot-color) 30%,var(--border))}
+  html[data-theme] body .progress-card:hover{transform:translateY(-3px)}
+  html[data-theme] body .flashcard:hover{transform:translateY(-4px) scale(1.01)}
+
+  /* Details inside cards answer the hover too */
+  .set-emoji,.qa-num,.qa-chevron .icon,.qa-test-big,.qa-test-go,.set-card .language-pill{transition:transform .6s var(--snap),background .35s,color .35s}
+  html[data-theme] body .set-card:hover .set-emoji{transform:scale(1.1) rotate(-6deg)}
+  html[data-theme] body .qa-item-head:hover .qa-num{background:var(--spot-color);color:#fff;transform:scale(1.08) rotate(-4deg)}
+  html[data-theme] body .qa-item:not(.open) .qa-item-head:hover .qa-chevron .icon{transform:translateY(2px)}
+  html[data-theme] body .qa-item-head:hover .qa-chevron{background:var(--surface-raised)}
+  html[data-theme] body .qa-test-option:hover .qa-test-big{transform:scale(1.08) translateX(2px)}
+  html[data-theme] body .qa-test-option:hover .qa-test-go{transform:translateX(4px) scale(1.1)}
+  html[data-theme] body .dialog-card:hover strong,html[data-theme] body .set-title:hover{color:var(--spot-color)}
+  .dialog-card strong{transition:color .3s}
+  html[data-theme] body .term-row{transition:background-color .3s,--spot .4s var(--glide)}
+  html[data-theme] body .term-row:hover{--spot:1;background-image:radial-gradient(260px circle at var(--hx,50%) var(--hy,50%),color-mix(in srgb,var(--spot-color) 9%,transparent),transparent 70%)}
+
+  /* ---------- Hero card: brighter light, the floating art leans toward you ---------- */
+  .focus-card .hero-art{transition:transform .8s var(--snap)}
+  html[data-theme] body .focus-card:hover .hero-art{transform:translateZ(0) scale(1.04) rotate(-1.5deg)}
+  .focus-card:after{transition:opacity .4s}
+  html[data-theme] body .focus-card:hover:after{background:radial-gradient(circle at var(--mx,70%) var(--my,20%),#ffffff33,transparent 45%)}
+
+  /* ---------- Navigation: one gliding pill ---------- */
+  .sidebar nav{position:relative;isolation:isolate}
+  .nav-pill{position:absolute;left:0;top:0;z-index:-1;border-radius:11px;background:color-mix(in srgb,var(--spot-color) 9%,var(--surface));box-shadow:0 0 0 1px color-mix(in srgb,var(--spot-color) 14%,transparent) inset;opacity:0;scale:.96;pointer-events:none;
+    transition:transform .5s var(--snap),width .5s var(--snap),height .5s var(--snap),opacity .3s var(--glide),scale .4s var(--snap)}
+  [data-theme="dark"] .nav-pill{background:#1d1f33}
+  .nav-pill.visible{opacity:1;scale:1}
+  html[data-theme] body .sidebar .nav-item:not(.active):hover{background:transparent;color:var(--text)}
+  .nav-item>.icon,.nav-item>span>.icon,.nav-item .icon{transition:transform .5s var(--snap)}
+  html[data-theme] body .nav-item:hover .icon{transform:scale(1.16) rotate(-8deg)}
+  .nav-item{transition:color .25s,background .3s,padding .4s var(--snap)}
+  .subject-tab:not([aria-selected="true"]):hover .subject-emoji{transform:scale(1.18) rotate(8deg)}
+
+  /* ---------- Text links: underline draws in from the left ---------- */
+  html[data-theme] body :is(.text-button,.back-link){text-decoration:none;background-image:linear-gradient(currentColor,currentColor);background-repeat:no-repeat;background-position:0 100%;background-size:0 1.5px;transition:background-size .5s var(--glide),color .25s}
+  html[data-theme] body :is(.text-button,.back-link):hover{background-size:100% 1.5px}
+  html[data-theme] body :is(.text-button,.back-link) .icon{transition:transform .5s var(--snap)}
+  html[data-theme] body .back-link:hover .icon{transform:translateX(-4px)}
+  html[data-theme] body .text-button:hover .icon{transform:translateX(3px)}
+  html[data-theme] body .text-button.danger:hover .icon{transform:rotate(-12deg) scale(1.1)}
+
+  /* ---------- Small things ---------- */
+  html[data-theme] body .brand .brand-symbol{transition:transform .6s var(--snap)}
+  html[data-theme] body .brand:hover .brand-symbol{transform:rotate(-10deg) scale(1.08)}
+  html[data-theme] body .qa-filter-chip[aria-pressed="true"]:hover{transform:translateY(-2px)}
+  html[data-theme] body .search-box{transition:box-shadow .4s var(--glide),border-color .3s}
+  html[data-theme] body .search-box:hover{border-color:color-mix(in srgb,var(--spot-color) 40%,var(--border));box-shadow:0 0 0 4px color-mix(in srgb,var(--spot-color) 10%,transparent)}
+  html[data-theme] body :is(.qa-typed,#import-text,.written-answer,.form-grid input,.form-grid select):not(:focus):not([readonly]):not(:disabled):hover{border-color:color-mix(in srgb,var(--spot-color) 40%,var(--border))}
+  html[data-theme] body .qa-switch:hover .qa-switch-ui:after{scale:1.08}
+  html[data-theme] body .qa-points,html[data-theme] body .qa-level{transition:transform .4s var(--snap)}
+  html[data-theme] body .qa-item-head:hover .qa-points{transform:translateY(-1px)}
+}
+@media (hover:hover) and (pointer:fine) and (min-width:801px){
+  html[data-theme] body .sidebar nav .nav-item:hover{padding-left:18px}
+  html[data-theme] body .sidebar-bottom .nav-item:hover{padding-left:13px}
+}
+@media (prefers-reduced-motion:reduce){.nav-pill{display:none}*{translate:none!important}}
