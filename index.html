@@ -2,8 +2,14 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#3758ed">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Wortwechsel">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <meta name="theme-color" content="#0e111c" id="theme-color">
   <meta name="description" content="Vokabeln, Dialoge und Fragenkataloge für jedes Fach lernen und Tests simulieren.">
   <title>Wortwechsel · Dein Lerntrainer</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -12,11 +18,13 @@
   <link rel="stylesheet" href="motion-theme.css">
   <link rel="stylesheet" href="subjects.css">
   <link rel="stylesheet" href="hover.css">
+  <link rel="stylesheet" href="mobile.css">
   <script src="core.js" defer></script>
   <script src="seed.js" defer></script>
   <script src="app.js" defer></script>
   <script src="effects.js" defer></script>
   <script src="hover.js" defer></script>
+  <script src="mobile.js" defer></script>
   <script src="vendor/supabase.js" defer></script>
   <script src="sync.js" defer></script>
 </head>
@@ -28,18 +36,18 @@
       <div class="subject-switch" id="subject-switch" role="tablist" aria-label="Fach wählen"></div>
       <nav>
         <div class="nav-group" id="nav-vocab">
-          <button class="nav-item active" data-view="library"><span data-icon="grid"></span>Meine Lernsets<span class="nav-count" id="set-count">1</span></button>
-          <button class="nav-item" id="nav-practice"><span data-icon="spark"></span>Weiterlernen</button>
-          <button class="nav-item" data-view="dialogs"><span data-icon="chat"></span>Dialoge</button>
-          <button class="nav-item" data-view="grammar"><span data-icon="table"></span>Grammatik</button>
-          <button class="nav-item" data-view="catalogs" id="nav-vocab-catalogs" hidden><span data-icon="book"></span>Fragenkataloge</button>
-          <button class="nav-item" id="nav-import"><span data-icon="plus"></span>Lernset erstellen</button>
+          <button class="nav-item active" data-view="library" data-short="Sets"><span data-icon="grid"></span>Meine Lernsets<span class="nav-count" id="set-count">1</span></button>
+          <button class="nav-item" id="nav-practice" data-short="Lernen"><span data-icon="spark"></span>Weiterlernen</button>
+          <button class="nav-item" data-view="dialogs" data-short="Dialoge"><span data-icon="chat"></span>Dialoge</button>
+          <button class="nav-item" data-view="grammar" data-short="Grammatik"><span data-icon="table"></span>Grammatik</button>
+          <button class="nav-item" data-view="catalogs" id="nav-vocab-catalogs" data-short="Kataloge" hidden><span data-icon="book"></span>Fragenkataloge</button>
+          <button class="nav-item" id="nav-import" data-short="Neu"><span data-icon="plus"></span>Lernset erstellen</button>
         </div>
         <div class="nav-group" id="nav-qa" hidden>
-          <button class="nav-item" data-view="catalogs"><span data-icon="grid"></span>Übersicht</button>
-          <button class="nav-item" id="nav-qa-learn"><span data-icon="spark"></span>Weiterlernen</button>
-          <button class="nav-item" id="nav-qa-test"><span data-icon="clock"></span>Test simulieren</button>
-          <button class="nav-item" id="nav-qa-new"><span data-icon="plus"></span>Katalog erstellen</button>
+          <button class="nav-item" data-view="catalogs" data-short="Übersicht"><span data-icon="grid"></span>Übersicht</button>
+          <button class="nav-item" id="nav-qa-learn" data-short="Lernen"><span data-icon="spark"></span>Weiterlernen</button>
+          <button class="nav-item" id="nav-qa-test" data-short="Test"><span data-icon="clock"></span>Test simulieren</button>
+          <button class="nav-item" id="nav-qa-new" data-short="Neu"><span data-icon="plus"></span>Katalog erstellen</button>
         </div>
       </nav>
       <div class="sidebar-bottom">
