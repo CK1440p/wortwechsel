@@ -312,7 +312,15 @@
     for (const [id, p] of Object.entries(validateGrammarProgress(base?.grammar))) grammar[id] = { best: Math.max(grammar[id]?.best || 0, p.best), practiced: [grammar[id]?.practiced || '', p.practiced].sort().at(-1) };
     out.grammar = grammar;
     if (base?.catalogs || other?.catalogs) out.catalogs = mergeCatalogs(base?.catalogs, other?.catalogs);
+    if (base?.math || other?.math) out.math = mergeMath(base?.math, other?.math);
     return out;
+  }
+  // Maths progress: per topic the newer entry wins, the best test result is kept.
+  function mergeMath(base, other) {
+    const a = base || {}, b = other || {}, topics = { ...(b.topics || {}) };
+    for (const [id, t] of Object.entries(a.topics || {})) if (!topics[id] || (Number(t?.at) || 0) >= (Number(topics[id]?.at) || 0)) topics[id] = t;
+    const ta = a.test || {}, tb = b.test || {}, newer = (Number(tb.at) || 0) > (Number(ta.at) || 0) ? tb : ta;
+    return { topics, test: { best: Math.max(Number(ta.best) || 0, Number(tb.best) || 0), last: Number(newer.last) || 0, at: Number(newer.at) || 0, runs: Math.max(Number(ta.runs) || 0, Number(tb.runs) || 0) } };
   }
   // Grammar tables. A gap is one field to fill: a table cell or the missing word of a sentence.
   const GRAMMAR_GAPS = { 1: 4, 2: 8 };
@@ -496,5 +504,5 @@
     }
     return out;
   }
-  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, mergeStates, dialogParts, dialogSpeakers, dialogQueue, grammarColumns, grammarCells, grammarGaps, checkGap, validateGrammarProgress, parseCatalog, serializeCatalog, qaStem, answerParts, answerKeywords, keywordCoverage, suggestPoints, rateQuestion, answerPreview, choiceOptions, validateCatalog, catalogStats, catalogQueue, mergeCatalogs };
+  return { uid, shuffle, normalize, variants, matches, parseImport, cleanPairs, csvRows, serializeTerms, directionState, mastery, setStats, recordAnswer, createRound, buildQuestion, isDemonstrative, lineTokens, lineWords, clozeLine, compareLine, parseDialog, serializeDialog, validateDialog, mergeStates, dialogParts, dialogSpeakers, dialogQueue, grammarColumns, grammarCells, grammarGaps, checkGap, validateGrammarProgress, parseCatalog, serializeCatalog, qaStem, answerParts, answerKeywords, keywordCoverage, suggestPoints, rateQuestion, answerPreview, choiceOptions, validateCatalog, catalogStats, catalogQueue, mergeCatalogs, mergeMath };
 });

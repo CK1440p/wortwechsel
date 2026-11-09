@@ -4,7 +4,7 @@
   const fine = window.matchMedia?.('(hover: hover) and (pointer: fine)');
   const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   const active = () => fine?.matches && !reduced?.matches;
-  const SPOT = '.button,.icon-button,.round-button,.account-button,.qa-filter-chip,.accent-keys button,.qa-stepper button,.set-card,.new-set-card,.dialog-card,.choice-button,.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.flashcard,.upload-zone,.progress-card,.term-row,.subject-tab,.radio-card';
+  const SPOT = '.button,.icon-button,.round-button,.account-button,.qa-filter-chip,.accent-keys button,.qa-stepper button,.set-card,.new-set-card,.dialog-card,.choice-button,.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.m-rule,.m-tf-row,.m-zone,.flashcard,.upload-zone,.progress-card,.term-row,.subject-tab,.radio-card';
   const MAGNET = '.button,.icon-button,.round-button,.account-button,.qa-filter-chip,.qa-stepper button,.accent-keys button';
   const TILT = '.dialog-card,.qa-test-option,.qa-rate-btn';
   let magnet = null, tilt = null, frame = 0, last = null;

@@ -46,6 +46,8 @@ button,a,label,summary,[data-action],.set-card,.qa-item-head{touch-action:manipu
   .main-shell{padding-bottom:calc(72px + env(safe-area-inset-bottom))}
   #main{padding:22px max(18px,env(safe-area-inset-right)) 32px max(18px,env(safe-area-inset-left))}
 
+  .qa-card-actions{scroll-margin-bottom:calc(96px + env(safe-area-inset-bottom))}
+
   /* Floating elements sit above the tab bar. */
   #toast{bottom:calc(84px + env(safe-area-inset-bottom));border-radius:14px;font-size:13px}
   .qa-dock{left:12px!important;right:12px;bottom:calc(76px + env(safe-area-inset-bottom));transform:none;justify-content:space-between;gap:12px;padding:8px 8px 8px 16px;white-space:normal;line-height:1.3;animation:dock-up .6s var(--spring,cubic-bezier(.34,1.56,.64,1)) .15s backwards}

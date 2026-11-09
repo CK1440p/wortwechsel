@@ -10,17 +10,20 @@
   <meta name="format-detection" content="telephone=no">
   <link rel="apple-touch-icon" href="icon.svg">
   <meta name="theme-color" content="#0e111c" id="theme-color">
-  <meta name="description" content="Vokabeln, Dialoge und Fragenkataloge für jedes Fach lernen und Tests simulieren.">
+  <meta name="description" content="Vokabeln, Dialoge, Fragenkataloge und Mathe-Übungen lernen und Tests simulieren.">
   <title>Wortwechsel · Dein Lerntrainer</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <script src="theme.js"></script>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="motion-theme.css">
   <link rel="stylesheet" href="subjects.css">
+  <link rel="stylesheet" href="math.css">
   <link rel="stylesheet" href="hover.css">
   <link rel="stylesheet" href="mobile.css">
   <script src="core.js" defer></script>
   <script src="seed.js" defer></script>
+  <script src="mathcore.js" defer></script>
+  <script src="math.js" defer></script>
   <script src="app.js" defer></script>
   <script src="effects.js" defer></script>
   <script src="hover.js" defer></script>
@@ -48,6 +51,12 @@
           <button class="nav-item" id="nav-qa-learn" data-short="Lernen"><span data-icon="spark"></span>Weiterlernen</button>
           <button class="nav-item" id="nav-qa-test" data-short="Test"><span data-icon="clock"></span>Test simulieren</button>
           <button class="nav-item" id="nav-qa-new" data-short="Neu"><span data-icon="plus"></span>Katalog erstellen</button>
+        </div>
+        <div class="nav-group" id="nav-math" hidden>
+          <button class="nav-item" data-view="math" data-action="m-home" data-short="Übersicht"><span data-icon="grid"></span>Übersicht</button>
+          <button class="nav-item" id="nav-math-mix" data-action="m-mix" data-short="Üben"><span data-icon="spark"></span>Gemischt üben</button>
+          <button class="nav-item" id="nav-math-test" data-action="m-test" data-short="Test"><span data-icon="clock"></span>Test simulieren</button>
+          <button class="nav-item" id="nav-math-formulas" data-action="m-formulas" data-short="Formeln"><span data-icon="book"></span>Formeln</button>
         </div>
       </nav>
       <div class="sidebar-bottom">
