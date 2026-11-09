@@ -5,7 +5,7 @@
 
 @media (hover:hover) and (pointer:fine){
   /* ---------- Shared: everything with a spotlight is its own stacking context ---------- */
-  :is(.button,.icon-button,.round-button,.account-button,.qa-filter-chip,.accent-keys button,.qa-stepper button,.new-set-card,.dialog-card,.choice-button,.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.flashcard,.upload-zone,.term-row,.radio-card){position:relative;isolation:isolate}
+  :is(.button,.icon-button,.round-button,.account-button,.qa-filter-chip,.accent-keys button,.qa-stepper button,.new-set-card,.dialog-card,.choice-button,.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.m-rule,.m-tf-row,.m-zone,.flashcard,.upload-zone,.term-row,.radio-card){position:relative;isolation:isolate}
 
   /* ---------- Magnetic buttons ---------- */
   html[data-theme] body :is(.button,.icon-button,.round-button,.account-button,.qa-filter-chip,.qa-stepper button,.accent-keys button){
@@ -45,15 +45,15 @@
   html[data-theme] body .button:active{scale:.96;transition-duration:.1s}
 
   /* ---------- Cards: glowing ring that follows the cursor, soft fill, lift ---------- */
-  html[data-theme] body :is(.new-set-card,.dialog-card,.choice-button,.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.flashcard,.upload-zone,.radio-card)::before,
+  html[data-theme] body :is(.new-set-card,.dialog-card,.choice-button,.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.m-rule,.m-tf-row,.m-zone,.flashcard,.upload-zone,.radio-card)::before,
   html[data-theme] body .set-card::after{
     content:'';position:absolute;inset:-1px;z-index:2;border-radius:inherit;pointer-events:none;padding:1.5px;opacity:var(--spot);
     background:radial-gradient(220px circle at var(--hx,50%) var(--hy,50%),var(--ring-color),color-mix(in srgb,var(--ring-color) 45%,transparent) 45%,transparent 70%);
     -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
-  html[data-theme] body :is(.set-card,.new-set-card,.dialog-card,.choice-button,.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.flashcard,.upload-zone,.radio-card,.progress-card){
+  html[data-theme] body :is(.set-card,.new-set-card,.dialog-card,.choice-button,.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.m-rule,.m-tf-row,.m-zone,.flashcard,.upload-zone,.radio-card,.progress-card){
     background-image:radial-gradient(380px circle at var(--hx,50%) var(--hy,50%),color-mix(in srgb,var(--spot-color) calc(var(--spot) * 12%),transparent),transparent 70%);
     transition:transform .6s var(--snap),box-shadow .6s var(--glide),border-color .4s,background-color .4s,--spot .5s var(--glide)}
-  html[data-theme] body :is(.set-card,.new-set-card,.dialog-card,.choice-button:not(:disabled),.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.flashcard,.upload-zone,.radio-card,.progress-card):hover{--spot:1;box-shadow:0 2px 6px #1a22440d,0 24px 60px -18px color-mix(in srgb,var(--spot-color) 38%,transparent)}
+  html[data-theme] body :is(.set-card,.new-set-card,.dialog-card,.choice-button:not(:disabled),.dlg-stage,.qa-item,.qa-test-option,.qa-rate-btn,.qa-test-item,.m-rule,.m-tf-row,.m-zone,.flashcard,.upload-zone,.radio-card,.progress-card):hover{--spot:1;box-shadow:0 2px 6px #1a22440d,0 24px 60px -18px color-mix(in srgb,var(--spot-color) 38%,transparent)}
   html[data-theme] body .set-card:hover{transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(-6px)}
   html[data-theme] body .new-set-card:hover{transform:translateY(-6px) scale(1.01)}
   html[data-theme] body .new-set-card:hover .new-set-icon{transform:rotate(90deg) scale(1.15)}
@@ -66,7 +66,7 @@
   html[data-theme] body .choice-button:not(:disabled):hover .choice-key{transform:scale(1.15) rotate(-6deg);background:var(--spot-color);color:#fff;border-color:transparent}
   .choice-key{transition:transform .5s var(--snap),background .3s,color .3s}
   html[data-theme] body .qa-item:hover{transform:translateY(-2px)}
-  html[data-theme] body .qa-test-item:hover{border-color:color-mix(in srgb,var(--spot-color) 30%,var(--border))}
+  html[data-theme] body .qa-test-item,.m-rule,.m-tf-row,.m-zone:hover{border-color:color-mix(in srgb,var(--spot-color) 30%,var(--border))}
   html[data-theme] body .progress-card:hover{transform:translateY(-3px)}
   html[data-theme] body .flashcard:hover{transform:translateY(-4px) scale(1.01)}
 
