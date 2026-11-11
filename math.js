@@ -97,6 +97,15 @@
     out += `<g clip-path="url(#${id})">${curves}</g>${extrasSvg(fr, s, s, id)}<g class="m-guide"></g><g class="m-dyn" data-clip="${id}"></g>`;
     return `<svg class="m-plot${mini ? ' mini' : ''}${s.equal ? ' equal' : ''}" data-w="${W}" data-h="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Funktionsgraph">${out}</svg>`;
   }
+  const euro = x => { const v = Math.round(x * 100) / 100; let [a, b] = Math.abs(v).toFixed(2).split('.'); a = a.replace(/\B(?=(\d{3})+$)/g, '.'); return `${v < 0 ? '−' : ''}${a},${b}`; };
+  const EFFECTS = [['↑', 'vermehrt'], ['↓', 'vermindert'], ['Ø', 'neutral']];
+  // A solution step can be a booking (Soll / Haben with amounts) or a table instead of text.
+  function stepHtml(s) {
+    if (s.table) return tableHtml(s.table);
+    if (!s.booking) return '';
+    const b = s.booking, line = x => `<div class="m-bk-line"><span>${M.escHtml(x.label)}</span>${b.noAmounts ? '' : `<b>${euro(x.amt)}</b>`}</div>`;
+    return `<div class="m-bk"><div class="m-bk-side">${b.soll.map(line).join('')}</div><div class="m-bk-slash" aria-hidden="true">/</div><div class="m-bk-side">${b.haben.map(line).join('')}</div>${b.effect ? `<div class="m-bk-effect">Eigenkapital: <b>${b.effect}</b> ${EFFECTS.find(e => e[0] === b.effect)[1]}</div>` : ''}</div>`;
+  }
   function tableHtml(t) {
     if (!t) return '';
     const row = t.head === 'row';
@@ -116,9 +125,18 @@
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const deg = r => r * 180 / Math.PI;
 
-  window.WWMathApp = { create(ctx) {
+  const MATH_COURSE = {
+    key: 'math', subject: 'Mathe', engine: M, topics: TOPICS, fig, line: `Differentialrechnung · ${TOPICS.length} Themen · immer neue Aufgaben`, examTitle: 'Differentialrechnung',
+    testIntro: 'Mehrteilige Aufgaben im Stil deiner Übungsschularbeit, ohne Tipps und ohne Sofort-Feedback. Taschenrechner oder GeoGebra sind erlaubt. Am Ende bekommst du Punkte und alle Lösungswege.',
+    testSizes: [['full', 7, 'Ganzer Test', '7 Aufgaben · etwa 45 Minuten'], ['short', 3, 'Kurztest', '3 Aufgaben · etwa 15 Minuten']],
+    cheatSheet: () => `<section class="m-section"><h2>${rich("Von $f$ zu $f'$")}</h2></section><div class="m-table-wrap"><table class="m-table rows m-dict"><tbody><tr><th>Graph von ${rich('$f$')}</th><th>Graph von ${rich("$f'$")}</th></tr>${[['steigt', 'liegt über der $x$-Achse'], ['fällt', 'liegt unter der $x$-Achse'], ['Hoch- oder Tiefpunkt', 'Nullstelle mit Vorzeichenwechsel'], ['Sattelpunkt', 'berührt die $x$-Achse'], ['steilste Stelle', 'Hoch- oder Tiefpunkt'], ['Gerade', 'waagrechte Gerade'], ['nach oben verschoben', 'bleibt gleich']].map(([a, b]) => `<tr><td>${rich(a)}</td><td>${rich(b)}</td></tr>`).join('')}</tbody></table></div>`,
+  };
+  window.WWMathCourse = MATH_COURSE;
+  window.WWMathApp = { create(ctx, course = MATH_COURSE) {
     const { $, esc, icon, toast, confirm, transition, reduced, shell, save, ring, levelLegend, levelBar, streak, countAnswer } = ctx;
-    const progress = () => ctx.data().math;
+    const K = course.key, E = course.engine, TOPICS = course.topics, fig = course.fig, topicById = id => TOPICS.find(t => t.id === id);
+    const views = [K, `${K}-topic`, `${K}-practice`, `${K}-test`, `${K}-formulas`];
+    const progress = () => ctx.data()[K];
     let round = null, exam = null, live = null, labStop = null, examTimer = null;
     const widgets = {};
     const fine = () => !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
@@ -137,23 +155,24 @@
         for (let i = 0; i <= 80; i++) { const x = 0.5 + 4.4 * (0.5 - 0.5 * Math.cos(i / 80 * 2 * Math.PI)); trans.push(`${n1(X(x))} ${n1(f(x))}`); rot.push(n1(deg(Math.atan(d(x) / 38)))); }
         anim = [`<animateTransform attributeName="transform" type="translate" dur="9s" repeatCount="indefinite" values="${trans.join(';')}"/>`, `<animateTransform attributeName="transform" type="rotate" dur="9s" repeatCount="indefinite" values="${rot.join(';')}"/>`];
       }
+      if (course.art) return course.art(reduced());
       return `<div class="hero-art m-art" aria-hidden="true"><svg viewBox="0 0 224 130"><path class="m-art-grid" d="M0 22H224M0 58H224M0 94H224M46 0V130M84 0V130M122 0V130M160 0V130M198 0V130"/><path class="m-art-curve" d="${path}"/><g transform="translate(${n1(X(2.7))} ${n1(f(2.7))})">${anim[0] || ''}<g>${anim[1] || ''}<line class="m-art-tan" x1="-62" x2="62" y1="0" y2="0"/><circle class="m-art-dot" r="5.5"/></g></g></svg></div>`;
     }
     function home() {
-      leave(); shell('math', 'Übersicht');
-      const p = progress(), s = M.stats(p), own = ctx.catalogs();
+      leave(); shell(K, 'Übersicht');
+      const p = progress(), s = E.stats(p), own = ctx.catalogs();
       const order = [...TOPICS].sort((a, b) => score(a.id) - score(b.id)), weakest = order[0], started = s.solved > 0 || Object.keys(p.topics).length > 0;
-      $('#main').innerHTML = `<section class="page-intro"><div><h1>Mathe<span class="blue-dot">.</span></h1><p>Differentialrechnung · ${TOPICS.length} Themen · immer neue Aufgaben</p></div><button class="button primary" data-action="m-formulas">${icon('book')}Formeln</button></section>
-        <section class="dashboard-grid"><div class="focus-card m-focus"><div class="focus-copy"><div class="hero-tag"><span class="pulse-dot"></span>${started ? 'EMPFOHLEN' : 'LOS GEHT’S'}</div><h2>Gemischt üben</h2><p>8 Aufgaben aus allen Themen, ${started ? `mehr von „${esc(weakest.title)}“` : 'die Schwächen zuerst'}. Fühlt sich schwerer an, bleibt aber länger.</p><div class="hero-actions"><button class="button white" data-action="m-mix">${icon('spark')}Üben${icon('arrow')}</button><button class="button glass" data-action="m-test">${icon('clock')}Test simulieren</button></div></div>${heroArt()}</div>
+      $('#main').innerHTML = `<section class="page-intro"><div><h1>${esc(course.subject)}<span class="blue-dot">.</span></h1><p>${esc(course.line)}</p></div><button class="button primary" data-action="m-formulas">${icon('book')}Formeln</button></section>
+        <section class="dashboard-grid"><div class="focus-card m-focus${course.focusClass ? ` ${course.focusClass}` : ''}"><div class="focus-copy"><div class="hero-tag"><span class="pulse-dot"></span>${started ? 'EMPFOHLEN' : 'LOS GEHT’S'}</div><h2>Gemischt üben</h2><p>8 Aufgaben aus allen Themen, ${started ? `mehr von „${esc(weakest.title)}“` : 'die Schwächen zuerst'}. Fühlt sich schwerer an, bleibt aber länger.</p><div class="hero-actions"><button class="button white" data-action="m-mix">${icon('spark')}Üben${icon('arrow')}</button><button class="button glass" data-action="m-test">${icon('clock')}Test simulieren</button></div></div>${heroArt()}</div>
         <aside class="progress-card qa-progress-card"><div class="section-kicker">DEIN STAND ${icon('chart')}</div><div class="qa-progress-body">${ring(s.progress, 'gelernt')}${levelLegend(s)}</div><div class="stat-duo"><div><span class="stat-icon flame">${icon('flame')}</span><strong>${streak()} <small>${streak() === 1 ? 'Tag' : 'Tage'}</small></strong><p>in Folge gelernt</p></div><div><span class="stat-icon lavender">${icon('clock')}</span><strong>${p.test.at ? `${p.test.last}<small>%</small>` : '–'}</strong><p>${p.test.at ? 'letzter Test' : 'noch kein Test'}</p></div></div></aside></section>
         <section class="library-section"><div class="section-heading"><div><h2>Themen <span class="count-badge">${TOPICS.length}</span></h2></div></div><div class="set-grid m-topic-grid">${TOPICS.map((t, i) => { const sc = score(t.id); return `<article class="set-card" style="--i:${i}"><div class="set-card-top"><div class="set-emoji tone-${i % 3}">${fig(t.id)}</div>${levelChip(t.id)}</div><button class="set-title" data-action="m-topic" data-topic="${t.id}">${esc(t.title)}</button><div class="set-meta">${esc(t.sub)}</div><div class="set-progress-label"><span>Fortschritt</span><strong>${sc}%</strong></div><div class="mini-progress"><span style="width:${sc}%"></span></div><div class="set-card-footer"><button class="text-button" data-action="m-topic" data-topic="${t.id}">Verstehen und üben</button><button class="round-button" data-action="m-start" data-topic="${t.id}" aria-label="${esc(t.title)} üben">${icon('arrow')}</button></div></article>`; }).join('')}</div></section>
         ${own.length ? `<section class="library-section"><div class="section-heading"><div><h2>Eigene Fragenkataloge <span class="count-badge">${own.length}</span></h2></div></div><div class="set-grid">${own.map(c => `<article class="set-card"><div class="set-card-top"><div class="set-emoji tone-0">${esc(c.emoji)}</div></div><button class="set-title" data-action="qa-open" data-catalog="${esc(c.id)}">${esc(c.title)}</button><div class="set-card-footer"><button class="text-button" data-action="qa-open" data-catalog="${esc(c.id)}">Fragen ansehen</button></div></article>`).join('')}</div></section>` : ''}`;
     }
     function topicPage(id) {
       stopLab(); round = null;
-      const t = topicById(id), sc = score(id), gens = M.GENS.filter(g => g.topic === id).sort((a, b) => a.rank - b.rank || a.min - b.min);
-      shell('math-topic', t.title);
-      $('#main').innerHTML = `<button class="back-link" data-action="m-home">${icon('back')} Mathe</button><section class="set-page-heading"><div class="set-emoji big">${fig(id)}</div><div><div class="eyebrow">THEMA ${TOPICS.indexOf(t) + 1} VON ${TOPICS.length}</div><h1>${esc(t.title)}</h1><p>${rich(t.intro)}</p></div></section>
+      const t = topicById(id), sc = score(id), gens = E.GENS.filter(g => g.topic === id).sort((a, b) => a.rank - b.rank || a.min - b.min);
+      shell(`${K}-topic`, t.title);
+      $('#main').innerHTML = `<button class="back-link" data-action="m-home">${icon('back')} ${esc(course.subject)}</button><section class="set-page-heading"><div class="set-emoji big">${fig(id)}</div><div><div class="eyebrow">THEMA ${TOPICS.indexOf(t) + 1} VON ${TOPICS.length}</div><h1>${esc(t.title)}</h1><p>${rich(t.intro)}</p></div></section>
         <div class="set-actions"><button class="button primary" data-action="m-start" data-topic="${id}">${icon('spark')}${sc ? 'Weiterüben' : 'Üben starten'}</button><button class="button secondary" data-action="m-mix">Gemischt üben</button></div>
         <section class="mastery-panel m-mastery"><div class="m-mastery-main">${levelChip(id)}<div class="mini-progress"><span style="width:${sc}%"></span></div></div><div class="m-mastery-side"><strong>${sc}%</strong><span>${progress().topics[id]?.right || 0} gelöst</span></div></section>
         <section class="m-section"><h2>Das Wichtigste</h2><div class="m-rules">${t.rules.map(([title, formula, text], i) => `<article class="m-rule" style="--i:${i}"><span>${esc(title)}</span><div class="m-formula">${rich(formula)}</div><p>${rich(text)}</p></article>`).join('')}</div></section>
@@ -164,9 +183,9 @@
       if (t.lab) mountLab(t.lab, $('#m-lab'));
     }
     function formulas() {
-      leave(); shell('math-formulas', 'Formeln');
-      $('#main').innerHTML = `<section class="page-intro"><div><h1>Formeln<span class="blue-dot">.</span></h1><p>Alles Wichtige für den Test auf einer Seite.</p></div></section>
-        <section class="m-section"><h2>${rich("Von $f$ zu $f'$")}</h2></section><div class="m-table-wrap"><table class="m-table rows m-dict"><tbody><tr><th>Graph von ${rich('$f$')}</th><th>Graph von ${rich("$f'$")}</th></tr>${[['steigt', 'liegt über der $x$-Achse'], ['fällt', 'liegt unter der $x$-Achse'], ['Hoch- oder Tiefpunkt', 'Nullstelle mit Vorzeichenwechsel'], ['Sattelpunkt', 'berührt die $x$-Achse'], ['steilste Stelle', 'Hoch- oder Tiefpunkt'], ['Gerade', 'waagrechte Gerade'], ['nach oben verschoben', 'bleibt gleich']].map(([a, b]) => `<tr><td>${rich(a)}</td><td>${rich(b)}</td></tr>`).join('')}</tbody></table></div>
+      leave(); shell(`${K}-formulas`, course.sheetTitle || 'Formeln');
+      $('#main').innerHTML = `<section class="page-intro"><div><h1>${esc(course.sheetTitle || 'Formeln')}<span class="blue-dot">.</span></h1><p>Alles Wichtige für den Test auf einer Seite.</p></div></section>
+        ${course.cheatSheet ? course.cheatSheet() : ''}
         ${TOPICS.map(t => `<section class="m-section"><h2>${esc(t.title)}</h2><div class="m-rules">${t.rules.map(([title, formula, text], i) => `<article class="m-rule" style="--i:${i}"><span>${esc(title)}</span><div class="m-formula">${rich(formula)}</div><p>${rich(text)}</p></article>`).join('')}</div></section>`).join('')}`;
     }
 
@@ -188,6 +207,7 @@
       if (a.type === 'tangent') return `<p class="m-tool-hint">${icon('spark')}<span>${rich('Zieh am Graphen, die Gerade dreht sich um $P$.')}</span></p>`;
       if (a.type === 'zones') return '';
       if (a.type === 'sketch') { const size = phone() ? { W: 440, H: 230 } : { W: 720, H: 240 }; return `<div class="m-sketch"><div class="m-plot-wrap" data-role="top">${plotSvg(a.plotF, size)}</div><div class="m-plot-wrap m-draw" data-role="bottom">${plotSvg(a.plotD, size)}<span class="m-draw-hint">${icon('edit')}Hier zeichnen</span></div><div class="m-draw-tools"><span class="m-tool-note">Einfach drüberzeichnen, um etwas auszubessern.</span><button type="button" class="qa-filter-chip" data-action="m-clear" data-part="${pid}">Löschen</button></div><ul class="m-criteria" hidden></ul></div>`; }
+      if (a.type === 'booking') return `<div class="m-book"><div class="m-book-cols">${['soll', 'haben'].map(side => `<div class="m-book-side" data-side="${side}"><div class="m-book-head">${side === 'soll' ? 'Soll' : 'Haben'}</div><div class="m-book-lines"></div><button type="button" class="text-button m-book-add" data-action="m-book-add" data-part="${pid}" data-side="${side}">${icon('plus')}Zeile</button></div>`).join('<div class="m-book-an" aria-hidden="true">an</div>')}</div>${a.effect ? `<div class="m-effect"><span>Eigenkapital</span><div class="m-tf-btns">${EFFECTS.map(([v, l]) => `<button type="button" data-action="m-effect" data-part="${pid}" data-v="${v}" aria-pressed="false"><b>${v}</b> ${l}</button>`).join('')}</div></div>` : ''}<div class="m-book-right" hidden></div></div>`;
       if (a.type === 'selfcheck') return `<textarea class="qa-typed m-text" rows="3" placeholder="Dein Satz …" aria-label="Deine Antwort"></textarea><div class="m-compare" hidden><div class="qa-solution"><div class="qa-solution-label">${icon('book')}So könnte es lauten</div><div class="qa-answer"><p>${rich(a.model)}</p></div></div><div class="m-ticks">${a.checklist.map((c, i) => `<label class="m-tick"><input type="checkbox" data-tick="${i}"><span class="m-tick-ui" aria-hidden="true">${icon('check')}</span><span>${rich(c)}</span></label>`).join('')}</div></div>`;
       return '';
     }
@@ -262,6 +282,7 @@
           final(res) { res.marks?.forEach((ok, i) => { mark(zones()[i], ok ? 'ok' : 'bad'); zones()[i].textContent = a.truth[i] === '+' ? '+' : '−'; }); } };
       }
       if (a.type === 'sketch') return mountSketch(host, a, pid, onChange, base);
+      if (a.type === 'booking') return mountBooking(host, a, pid, onChange, base);
       if (a.type === 'selfcheck') {
         const text = host.querySelector('.m-text'), box = host.querySelector('.m-compare'), ticks = [...host.querySelectorAll('[data-tick]')];
         let open = false;
@@ -269,6 +290,30 @@
         return { ...base, text: () => text.value.trim(), compare() { open = true; box.hidden = false; text.readOnly = true; }, opened: () => open, read: () => open ? { ticks: ticks.filter(c => c.checked).length } : null, lock() { text.readOnly = true; } };
       }
       return base;
+    }
+    function mountBooking(host, a, pid, onChange, base) {
+      const box = host.querySelector('.m-book'), opts = `<option value="">Konto wählen …</option>${a.accounts.map(x => `<option value="${esc(x.no)}">${esc(x.label)}</option>`).join('')}`;
+      let effect = null, locked = false;
+      const lines = side => [...box.querySelectorAll(`[data-side="${side}"] .m-book-line`)];
+      const clear = el => el.classList.remove('ok', 'bad');
+      function add(side, focus = false) {
+        if (locked) return;
+        const list = box.querySelector(`[data-side="${side}"] .m-book-lines`);
+        list.insertAdjacentHTML('beforeend', `<div class="m-book-line"><div class="m-input m-select"><select aria-label="${side === 'soll' ? 'Soll' : 'Haben'}-Konto">${opts}</select></div>${a.noAmounts ? '' : '<div class="m-input m-amt"><input class="m-num" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Betrag"><span class="m-unit">€</span></div>'}<button type="button" class="m-book-del" data-action="m-book-del" data-part="${pid}" aria-label="Zeile entfernen">${icon('close')}</button></div>`);
+        const line = list.lastElementChild;
+        line.querySelectorAll('select, input').forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => { clear(line); onChange(); }));
+        if (focus) line.querySelector('select')?.focus();
+      }
+      add('soll'); add('haben');
+      // Reading the chosen option also works in DOM implementations without select.value (used in the tests).
+      const selVal = sel => sel.value ?? sel.querySelector('option[selected]')?.getAttribute('value') ?? '';
+      const read = side => lines(side).map(l => ({ acc: selVal(l.querySelector('select')), amt: l.querySelector('input')?.value ?? '' })).filter(x => x.acc || x.amt);
+      return { ...base, add: side => add(side, true), del(btn) { if (locked) return; const line = btn.closest('.m-book-line'), side = line.closest('[data-side]').dataset.side; line.remove(); if (!lines(side).length) add(side); onChange(); },
+        setEffect(v) { if (locked) return; effect = v; box.querySelectorAll('[data-action="m-effect"]').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.v === v)); b.classList.remove('ok', 'bad'); }); onChange(); },
+        read: () => ({ soll: read('soll'), haben: read('haben'), effect }),
+        show(res) { for (const side of ['soll', 'haben']) for (const l of lines(side)) { const acc = selVal(l.querySelector('select')), info = res.lines?.[side]?.find(x => x.acc === acc); clear(l); if (acc) l.classList.add(info?.accOk && info.amtOk ? 'ok' : 'bad'); } if (a.effect && effect) box.querySelector(`[data-action="m-effect"][data-v="${effect}"]`)?.classList.add(res.effectOk ? 'ok' : 'bad'); },
+        lock() { locked = true; box.classList.add('locked'); box.querySelectorAll('select, input, button').forEach(el => { el.disabled = true; }); },
+        final() { const right = box.querySelector('.m-book-right'); right.hidden = false; right.innerHTML = `<div class="qa-solution-label">${icon('check')}Richtige Buchung</div>${stepHtml({ booking: a })}`; } };
     }
     function mountSketch(host, a, pid, onChange, base) {
       const N = 180, bins = Array(N).fill(null), top = host.querySelector('[data-role="top"] svg'), bottom = host.querySelector('[data-role="bottom"] svg'), hint = host.querySelector('.m-draw-hint');
@@ -314,15 +359,15 @@
     // ---- Practice round ----
     function startRound(o) {
       leave();
-      const list = o.gen ? Array.from({ length: 5 }, () => ({ topic: M.genById(o.gen).topic, gen: o.gen })) : o.topic ? Array.from({ length: 8 }, () => ({ topic: o.topic })) : M.planMix(progress(), 8).map(topic => ({ topic }));
-      round = { plan: list, i: 0, used: [], results: [], right: 0, helped: 0, wrong: 0, extra: 0, title: o.gen ? M.genById(o.gen).label : o.topic ? topicById(o.topic).title : 'Gemischt üben', topic: o.topic || (o.gen ? M.genById(o.gen).topic : null), opts: o, start: Object.fromEntries(M.TOPIC_IDS.map(id => [id, score(id)])) };
+      const list = o.gen ? Array.from({ length: 5 }, () => ({ topic: E.genById(o.gen).topic, gen: o.gen })) : o.topic ? Array.from({ length: 8 }, () => ({ topic: o.topic })) : E.planMix(progress(), 8).map(topic => ({ topic }));
+      round = { plan: list, i: 0, used: [], results: [], right: 0, helped: 0, wrong: 0, extra: 0, title: o.gen ? E.genById(o.gen).label : o.topic ? topicById(o.topic).title : 'Gemischt üben', topic: o.topic || (o.gen ? E.genById(o.gen).topic : null), opts: o, start: Object.fromEntries(E.TOPIC_IDS.map(id => [id, score(id)])) };
       nextTask();
     }
     function nextTask() {
       if (round.i >= round.plan.length) return roundResult();
       const item = round.plan[round.i], stage = item.stage || M.stageFor(score(item.topic));
-      const id = item.gen || M.pickGen(item.topic, stage, round.used).id, gen = M.genById(id);
-      round.task = M.makeTask(id, Math.min(gen.max, Math.max(gen.min, stage)), Math.floor(Math.random() * 2 ** 31));
+      const id = item.gen || E.pickGen(item.topic, stage, round.used).id, gen = E.genById(id);
+      round.task = E.makeTask(id, Math.min(gen.max, Math.max(gen.min, stage)), Math.floor(Math.random() * 2 ** 31));
       round.item = item; round.tries = 0; round.hints = 0; round.done = false; round.compare = false;
       round.used = [...round.used.slice(-5), id];
       drawTask();
@@ -335,7 +380,7 @@
     }
     function drawTask() {
       const t = round.task, total = round.plan.length, percent = Math.round(round.i / total * 100), topic = topicById(t.topic);
-      shell('math-practice', round.title);
+      shell(`${K}-practice`, round.title);
       $('#main').innerHTML = `<section class="learning-shell qa-shell m-shell"><div class="learning-top"><button class="back-link" data-action="m-exit">${icon('back')}Beenden</button><span class="learning-set-name">${esc(round.title)}</span><span class="qa-round-count">${round.i + 1} / ${total}</span></div><div class="round-progress"><div><strong>${esc(topic.title)}</strong><span>${round.right} richtig</span></div><div class="mini-progress"><span style="width:${percent}%"></span></div></div>
         <article class="qa-card m-card" id="m-card"><div class="qa-card-meta"><span class="qa-chip">${esc(t.kicker || t.label)}</span><span class="qa-chip">${STAGES[t.stage]}</span>${round.item.retry ? '<span class="qa-chip again">Nochmal mit neuen Zahlen</span>' : ''}</div>${taskBody(t, 'main')}
         <div class="m-hints" id="m-hints"></div><div id="m-verdict"></div><div class="qa-reveal" id="m-reveal"><div class="qa-reveal-inner" id="m-reveal-inner"></div></div><div class="qa-card-actions m-actions" id="m-actions">${taskActions()}</div></article></section>`;
@@ -375,12 +420,13 @@
       round.results.push({ topic: t.topic, label: t.label, got });
       if (got >= 1) round.right++; else if (got > 0) round.helped++; else round.wrong++;
       if (got < 1 && round.extra < 3 && !round.item.retry && round.task.answer.type !== 'selfcheck') { round.extra++; round.plan.splice(Math.min(round.i + 3, round.plan.length), 0, { topic: t.topic, gen: t.gen, retry: true, stage: Math.max(1, t.stage - (got > 0 ? 0 : 1)) }); }
-      const steps = t.solution || [], take = t.takeaway;
+      // The booking widget already shows the right booking, so it is not repeated in the solution.
+      const steps = (t.solution || []).filter(x => !(x?.booking && t.answer.type === 'booking')), take = t.takeaway;
       if (got >= 1) verdict('ok', ['Richtig.', 'Genau so.', 'Stimmt.'][Math.floor(Math.random() * 3)], res.msgs?.filter(() => false));
       else if (got > 0) verdict('ok', t.answer.type === 'selfcheck' ? 'Fast vollständig.' : 'Richtig, mit Hilfe.');
       else if (gaveUp) verdict('info', 'Hier ist die Lösung. Die Aufgabe kommt gleich mit neuen Zahlen wieder.');
       else verdict('bad', 'Diesmal nicht.', res.msgs || []);
-      $('#m-reveal-inner').innerHTML = steps.length || take ? `<div class="qa-solution"><div class="qa-solution-label">${icon('book')}Lösungsweg</div><ol class="m-steps">${steps.map((s, i) => `<li style="--i:${i}">${rich(s)}</li>`).join('')}</ol>${take ? `<p class="m-take">${rich(take)}</p>` : ''}</div>` : '';
+      $('#m-reveal-inner').innerHTML = steps.length || take ? `<div class="qa-solution"><div class="qa-solution-label">${icon('book')}Lösungsweg</div><ol class="m-steps">${steps.map((s, i) => `<li style="--i:${i}">${typeof s === 'object' ? stepHtml(s) : rich(s)}</li>`).join('')}</ol>${take ? `<p class="m-take">${rich(take)}</p>` : ''}</div>` : '';
       if (t.showPlot && t.plots?.[0]) { const svg = $('#m-card [data-plot="0"] svg'), dyn = svg?.querySelector('.m-dyn'); if (dyn && t.answer.type !== 'pick') dyn.innerHTML = extrasSvg(frameOf(svg, t.plots[0]), t.plots[0], t.showPlot, dyn.dataset.clip); }
       $('#m-actions').innerHTML = `<div class="m-side"></div><button class="button primary" data-action="m-next">${round.i + 1 >= round.plan.length ? 'Ergebnis ansehen' : 'Weiter'} ${icon('arrow')}</button>`;
       requestAnimationFrame(() => $('#m-reveal')?.classList.add('open'));
@@ -396,7 +442,7 @@
     function roundResult() {
       const r = round, weak = [...new Map(r.results.filter(x => x.got < 1).map(x => [x.label, x])).values()], touched = [...new Set(r.results.map(x => x.topic))];
       const repeat = r.opts.gen ? `data-action="m-gen" data-gen="${r.opts.gen}"` : r.opts.topic ? `data-action="m-start" data-topic="${r.opts.topic}"` : 'data-action="m-mix"';
-      leave(); shell('math-practice', 'Ergebnis');
+      leave(); shell(`${K}-practice`, 'Ergebnis');
       $('#main').innerHTML = `<section class="result-page"><div class="result-icon">${icon('check')}<span>✦</span></div><h1>Runde geschafft<span class="blue-dot">.</span></h1><p>${r.wrong ? 'Die Fehler kamen mit neuen Zahlen nochmal. Genau das bringt am meisten.' : 'Sauber gelöst. Mach als Nächstes eine gemischte Runde oder den Test.'}</p><div class="result-stats"><div><strong>${r.right}</strong><span>richtig</span></div><div><strong>${r.helped}</strong><span>mit Hilfe</span></div><div><strong>${r.wrong}</strong><span>falsch</span></div></div>
         <div class="result-review qa-review"><h3>Dein Stand</h3>${touched.map(id => `<div><span>${esc(topicById(id).title)}</span>${levelChip(id)}<strong class="m-delta">${r.start[id]}% → ${score(id)}%</strong></div>`).join('')}</div>${weak.length ? `<div class="result-review qa-review"><h3>Noch einmal anschauen</h3>${weak.map(x => `<div><span>${esc(x.label)}</span><span class="m-muted">${esc(topicById(x.topic).title)}</span></div>`).join('')}</div>` : '<div class="perfect-note">Alles auf Anhieb richtig.</div>'}
         <div class="result-actions"><button class="button primary" ${repeat}>Nochmal ${icon('arrow')}</button><button class="button secondary" data-action="m-test">Test simulieren</button><button class="text-button" data-action="m-home">Zur Übersicht</button></div></section>`;
@@ -404,22 +450,22 @@
 
     // ---- Test simulation ----
     function testSetup() {
-      leave(); shell('math-test', 'Test simulieren');
+      leave(); shell(`${K}-test`, 'Test simulieren');
       const p = progress().test, option = (size, big, title, text) => `<button class="qa-test-option" data-action="m-exam-start" data-size="${size}"><span class="qa-test-big">${big}</span><strong>${title}</strong><small>${text}</small><span class="qa-test-go">${icon('arrow')}</span></button>`;
-      $('#main').innerHTML = `<button class="back-link" data-action="m-home">${icon('back')} Mathe</button><section class="qa-test-intro"><div class="eyebrow">${icon('clock')} TEST SIMULIEREN</div><h1>Wie im echten Test<span class="blue-dot">.</span></h1><p>Mehrteilige Aufgaben im Stil deiner Übungsschularbeit, ohne Tipps und ohne Sofort-Feedback. Taschenrechner oder GeoGebra sind erlaubt. Am Ende bekommst du Punkte und alle Lösungswege.</p><div class="qa-test-options">${option('full', 7, 'Ganzer Test', '7 Aufgaben · etwa 45 Minuten')}${option('short', 3, 'Kurztest', '3 Aufgaben · etwa 15 Minuten')}</div>${p.at ? `<p class="qa-test-best">Bester Test: <strong>${p.best}%</strong> · Letzter: <strong>${p.last}%</strong></p>` : ''}</section>`;
+      $('#main').innerHTML = `<button class="back-link" data-action="m-home">${icon('back')} ${esc(course.subject)}</button><section class="qa-test-intro"><div class="eyebrow">${icon('clock')} TEST SIMULIEREN</div><h1>Wie im echten Test<span class="blue-dot">.</span></h1><p>${esc(course.testIntro)}</p><div class="qa-test-options">${course.testSizes.map(x => option(...x)).join('')}</div>${p.at ? `<p class="qa-test-best">Bester Test: <strong>${p.best}%</strong> · Letzter: <strong>${p.last}%</strong></p>` : ''}</section>`;
     }
     const allParts = () => exam.data.tasks.flatMap(t => t.parts);
     const clockText = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-    const partHtml = p => `<section class="m-part" data-part-box="${p.id}"><div class="m-part-head"><span class="m-part-label">${p.label})</span><div class="m-part-ask">${rich(p.ask)}</div><span class="qa-points">${p.points} P.</span></div>${plotsHtml(p, p.id)}<div data-answer="${p.id}">${answerHtml(p, p.id)}</div><div class="m-part-result" data-result="${p.id}"></div></section>`;
+    const partHtml = p => `<section class="m-part" data-part-box="${p.id}"><div class="m-part-head"><span class="m-part-label">${p.label})</span><div class="m-part-ask">${rich(p.ask)}</div><span class="qa-points">${p.points} P.</span></div>${tableHtml(p.table)}${plotsHtml(p, p.id)}<div data-answer="${p.id}">${answerHtml(p, p.id)}</div><div class="m-part-result" data-result="${p.id}"></div></section>`;
     function startExam(size) {
       leave();
-      exam = { data: M.buildTest(Math.floor(Math.random() * 2 ** 31), size), phase: 'write', started: Date.now(), seconds: 0, awarded: {}, results: {} };
+      exam = { data: E.buildTest(Math.floor(Math.random() * 2 ** 31), size), phase: 'write', started: Date.now(), seconds: 0, awarded: {}, results: {} };
       drawExam();
     }
     function drawExam() {
       const d = exam.data;
-      shell('math-test', 'Test');
-      $('#main').innerHTML = `<section class="qa-test m-exam"><div class="qa-test-bar"><button class="back-link" data-action="m-exam-exit">${icon('back')}Abbrechen</button><div class="qa-test-title"><strong>Differentialrechnung</strong><small id="m-exam-status"></small></div><span class="qa-timer" id="m-exam-timer">${icon('clock')}<span>00:00</span></span></div>
+      shell(`${K}-test`, 'Test');
+      $('#main').innerHTML = `<section class="qa-test m-exam"><div class="qa-test-bar"><button class="back-link" data-action="m-exam-exit">${icon('back')}Abbrechen</button><div class="qa-test-title"><strong>${esc(course.examTitle)}</strong><small id="m-exam-status"></small></div><span class="qa-timer" id="m-exam-timer">${icon('clock')}<span>00:00</span></span></div>
         <ol class="qa-test-list">${d.tasks.map((t, i) => `<li class="qa-test-item" style="--i:${Math.min(i, 10)}"><div class="qa-test-q"><span class="qa-num">${i + 1}</span><h2>${esc(t.title)}</h2><span class="qa-points">${t.parts.reduce((s, p) => s + p.points, 0)} P.</span></div>${t.lead ? `<p class="m-lead">${rich(t.lead)}</p>` : ''}${tableHtml(t.table)}${(t.plots || []).map(s => `<div class="m-plot-wrap">${plotSvg(s)}</div>`).join('')}${t.parts.map(partHtml).join('')}</li>`).join('')}</ol>
         <div class="qa-dock"><span id="m-exam-dock"></span><button class="button primary" data-action="m-exam-submit">Abgeben ${icon('check')}</button></div></section>`;
       for (const p of allParts()) widgets[p.id] = mount(document.querySelector(`[data-part-box="${p.id}"]`), p, p.id, examStatus);
@@ -442,7 +488,7 @@
           w.lock();
           if (p.answer.type === 'selfcheck') { w.compare(); exam.results[p.id] = { selfcheck: true }; exam.awarded[p.id] = 0; }
           else { const res = M.check(p, w.read()); if (!res.empty) w.show(res); w.final(res.empty ? blank(p.answer, res) : res); exam.results[p.id] = res; exam.awarded[p.id] = Math.round(p.points * (res.score || 0) * 2) / 2; }
-          document.querySelector(`[data-result="${p.id}"]`).innerHTML = `${(p.solution || []).length ? `<div class="qa-solution"><div class="qa-solution-label">${icon('book')}Lösung</div><ol class="m-steps">${p.solution.map((s, i) => `<li style="--i:${i}">${rich(s)}</li>`).join('')}</ol></div>` : ''}<div class="qa-grade-row"><span>Punkte</span><div class="qa-stepper"><button type="button" data-action="m-points" data-part="${p.id}" data-delta="-0.5" aria-label="Halben Punkt abziehen">−</button><output data-out="${p.id}">${fmt(exam.awarded[p.id], 1)}</output><span>/ ${p.points}</span><button type="button" data-action="m-points" data-part="${p.id}" data-delta="0.5" aria-label="Halben Punkt dazugeben">+</button></div></div>`;
+          document.querySelector(`[data-result="${p.id}"]`).innerHTML = `${(p.solution = (p.solution || []).filter(x => !(x?.booking && p.answer.type === 'booking'))).length ? `<div class="qa-solution"><div class="qa-solution-label">${icon('book')}Lösung</div><ol class="m-steps">${p.solution.map((s, i) => `<li style="--i:${i}">${typeof s === 'object' ? stepHtml(s) : rich(s)}</li>`).join('')}</ol></div>` : ''}<div class="qa-grade-row"><span>Punkte</span><div class="qa-stepper"><button type="button" data-action="m-points" data-part="${p.id}" data-delta="-0.5" aria-label="Halben Punkt abziehen">−</button><output data-out="${p.id}">${fmt(exam.awarded[p.id], 1)}</output><span>/ ${p.points}</span><button type="button" data-action="m-points" data-part="${p.id}" data-delta="0.5" aria-label="Halben Punkt dazugeben">+</button></div></div>`;
           if (p.answer.type === 'selfcheck') document.querySelectorAll(`[data-part-box="${p.id}"] [data-tick]`).forEach(c => c.addEventListener('change', () => { const box = document.querySelector(`[data-part-box="${p.id}"]`), ticked = box.querySelectorAll('[data-tick]:checked').length, all = p.answer.checklist.length; setPoints(p, Math.round(p.points * ticked / all * 2) / 2); }));
         }
         $('.m-exam .qa-test-bar').innerHTML = `<div class="qa-test-title"><strong>Korrektur</strong><small>Prüf die Punkte und pass sie an, wo nötig.</small></div><div class="qa-score-live"><strong id="m-exam-score">${fmt(examScore(), 1)}</strong><span>/ ${exam.data.points}</span></div>`;
@@ -457,7 +503,7 @@
     function finishExam() {
       const got = examScore(), max = exam.data.points, percent = max ? Math.round(got / max * 100) : 0, t = progress().test, tasks = exam.data.tasks, awarded = exam.awarded, mins = Math.max(1, Math.round(exam.seconds / 60));
       progress().test = { best: Math.max(t.best, percent), last: percent, at: Date.now(), runs: t.runs + 1 }; countAnswer(); save();
-      leave(); shell('math-test', 'Testergebnis');
+      leave(); shell(`${K}-test`, 'Testergebnis');
       $('#main').innerHTML = `<section class="result-page qa-test-result"><div class="qa-score-ring">${ring(percent, 'erreicht')}</div><h1>${percent >= 90 ? 'Sehr stark' : percent >= 65 ? 'Gut gemacht' : percent >= 50 ? 'Das wird' : 'Dranbleiben'}<span class="blue-dot">.</span></h1><p>${fmt(got, 1)} von ${max} Punkten in ${mins} ${mins === 1 ? 'Minute' : 'Minuten'}.</p><div class="result-review qa-review"><h3>Nach Aufgaben</h3>${tasks.map(x => { const sum = x.parts.reduce((s, p) => s + p.points, 0), have = x.parts.reduce((s, p) => s + (awarded[p.id] || 0), 0); return `<div><span>${esc(x.title)}</span><strong class="m-delta">${fmt(have, 1)} / ${sum}</strong></div>`; }).join('')}</div><div class="result-actions"><button class="button primary" data-action="m-mix">Schwächen üben ${icon('arrow')}</button><button class="button secondary" data-action="m-test">Noch ein Test</button><button class="text-button" data-action="m-home">Zur Übersicht</button></div></section>`;
     }
 
@@ -465,6 +511,7 @@
     function mountLab(kind, host) {
       if (kind === 'secant') return labSecant(host);
       if (kind === 'angle') return labAngle(host);
+      if (kind === 'afa') return labAfa(host);
       return labDerive(host, kind === 'motion');
     }
     const playButton = (id, text) => `<button type="button" class="button secondary" id="${id}">${icon('spark')}${text}</button>`;
@@ -474,6 +521,19 @@
       const tick = now => { if (stopped) return; begin ??= now; const u = Math.min(1, (now - begin) / duration); step(u); if (u < 1) raf = requestAnimationFrame(tick); else done?.(); };
       raf = requestAnimationFrame(tick);
       return () => { stopped = true; cancelAnimationFrame?.(raf); };
+    }
+    // Depreciation playground: change the purchase value, useful life and month of first use and watch the table and the book value.
+    function labAfa(host) {
+      const R = window.WWRw, st = { aw: 24000, nd: 5, month: 3, keep: false };
+      host.innerHTML = `<p class="m-lab-note">Ändere die Werte und beobachte, wie sich die Halbjahresregel und der Erinnerungseuro auswirken.</p><div class="m-afa-ctl">${[['aw', 'Anschaffungswert', 1000, 100000, 500], ['nd', 'Nutzungsdauer (Jahre)', 2, 12, 1], ['month', 'Inbetriebnahme (Monat)', 1, 12, 1]].map(([k, l, a, b, step]) => `<label><span>${l}<b data-out="${k}"></b></span><input type="range" min="${a}" max="${b}" step="${step}" value="${st[k]}" data-k="${k}"></label>`).join('')}<label class="m-afa-check"><input type="checkbox" data-k="keep"><span>Bleibt nach der Nutzungsdauer im Betrieb (Erinnerungseuro)</span></label></div><div class="m-afa-out"></div>`;
+      const MONTHS = ['Jänner', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+      function paint() {
+        const plan = R.afaPlan(st.aw, st.nd, st.month, { keepEuro: st.keep }), max = st.aw, W = 100 / plan.rows.length;
+        host.querySelector('[data-out="aw"]').textContent = `€ ${euro(st.aw)}`; host.querySelector('[data-out="nd"]').textContent = `${st.nd}`; host.querySelector('[data-out="month"]').textContent = MONTHS[st.month - 1];
+        host.querySelector('.m-afa-out').innerHTML = `<div class="m-afa-bars" aria-hidden="true">${plan.rows.map((x, i) => `<div style="--h:${(x.bw + x.afa) / max * 100}%;--a:${x.afa / max * 100}%;width:${W}%"><i></i><b></b><span>${String(x.year).slice(2)}</span></div>`).join('')}</div><dl class="m-read"><div><dt>Satz</dt><dd>${euro(plan.rate).replace(/,00$/, '')} %</dd></div><div><dt>Pro Jahr</dt><dd>€ ${euro(plan.annual)}</dd></div><div><dt>Erstes Jahr</dt><dd>${plan.half ? 'halb' : 'ganz'}</dd></div><div><dt>Jahre</dt><dd>${plan.rows.length}</dd></div></dl>${tableHtml({ head: 'row', rows: [['Jahr', 'Abschreibung', 'Buchwert 31.12.'], ...plan.rows.map(x => [String(x.year), `€ ${euro(x.afa)}`, `€ ${euro(x.bw)}`])] })}`;
+      }
+      host.querySelectorAll('[data-k]').forEach(el => el.addEventListener('input', () => { st[el.dataset.k] = el.type === 'checkbox' ? el.checked : Number(el.value); paint(); }));
+      paint();
     }
     function labSecant(host) {
       const f = x => 0.1 * x ** 3 - x * x + 2.6 * x + 1.5, d = x => 0.3 * x * x - 2 * x + 2.6, s = M.spec([0, 8, 1], [0, 10, 1], { curves: [{ fn: f, tone: 'f', name: 'f' }] });
@@ -560,6 +620,9 @@
         case 'm-tf': return widgets[part].set(Number(btn.dataset.i), btn.dataset.v === '1');
         case 'm-zone': return widgets[part].cycle(Number(btn.dataset.i));
         case 'm-clear': return widgets[part].clear();
+        case 'm-book-add': return widgets[part].add(btn.dataset.side);
+        case 'm-book-del': return widgets[part].del(btn);
+        case 'm-effect': return widgets[part].setEffect(btn.dataset.v);
         case 'm-sign': { const input = btn.parentElement.querySelector('input'); if (!input || input.disabled) return; input.value = /^[-−]/.test(input.value) ? input.value.slice(1) : `-${input.value}`; input.dispatchEvent(new window.Event('input', { bubbles: true })); return; }
         case 'm-points': { const p = allParts().find(x => x.id === part); return setPoints(p, (exam.awarded[part] || 0) + Number(btn.dataset.delta)); }
         case 'm-reset': return confirm('Von vorne anfangen?', 'Der Lernstand dieses Themas wird zurückgesetzt.', 'Zurücksetzen', () => { delete progress().topics[btn.dataset.topic]; save(); topicPage(btn.dataset.topic); toast('Fortschritt zurückgesetzt.'); });
@@ -571,6 +634,6 @@
       if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && !e.target.closest?.('button')) { e.preventDefault(); return round.done ? advance() : checkTask(); }
       if (!input && !round.done && a.type === 'choice' && /^[1-9]$/.test(e.key) && Number(e.key) <= a.options.length) { e.preventDefault(); widgets.main.choose(Number(e.key) - 1); checkTask(); }
     }
-    return { home, leave, action, key, busy: () => !!round || exam?.phase === 'write' };
+    return { home, leave, action, key, views, course, busy: () => !!round || exam?.phase === 'write' };
   } };
 })();

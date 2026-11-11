@@ -30,7 +30,7 @@
   const eq = (x, d) => close(round(x, d), x, 1e-7) ? '=' : '\\approx ';
   // Accepts 1,5 · 1.5 · -3 · −3 · 3/4 · "13,75 m/s". A dot before three digits can be a thousands separator, so both readings count.
   function parseNumber(raw) {
-    const text = String(raw ?? '').trim().replace(/[−–]/g, '-').replace(/(\d)[\s ]+(?=\d)/g, '$1');
+    const text = String(raw ?? '').trim().replace(/^(€|eur\b)\s*/i, '').replace(/[−–]/g, '-').replace(/(\d)[\s ]+(?=\d)/g, '$1');
     const m = text.match(/^([+-]?)(\d+(?:[.,]\d+)*|[.,]\d+)(?:\s*\/\s*(\d+(?:[.,]\d+)?))?/);
     if (!m) return [];
     const sign = m[1] === '-' ? -1 : 1, den = m[3] ? Number(m[3].replace(',', '.')) : 1;
@@ -1004,6 +1004,35 @@
     else if (!ok && c1 < -0.6) msgs.push('Das Vorzeichen ist vertauscht: Wo $f$ steigt, muss $f\'$ über der $x$-Achse liegen.');
     return { ok, score: Math.max(0, Math.min(1, ok ? Math.max(score, 0.85) : score)), criteria, msgs, cross };
   }
+  // A booking is right when every side holds the same accounts with the same sums. Split lines on one account are added up.
+  const moneyClose = (x, y) => Math.abs(x - y) <= 0.011;
+  function bookingSums(lines) {
+    const out = new Map();
+    for (const l of lines || []) { if (!l?.acc) continue; const v = parseNumber(l.amt)[0]; out.set(l.acc, (out.get(l.acc) || 0) + (Number.isFinite(v) ? v : NaN)); }
+    return out;
+  }
+  function checkBooking(a, res) {
+    const soll = bookingSums(res.soll), haben = bookingSums(res.haben);
+    if (!soll.size && !haben.size && !res.effect) return { empty: true, ok: false, score: 0, msgs: ['Wähle zuerst die Konten aus.'] };
+    const want = side => new Map(a[side].map(l => [l.acc, l.amt])), ws = want('soll'), wh = want('haben');
+    const lines = { soll: [], haben: [] }, msgs = [];
+    let right = 0, total = ws.size + wh.size;
+    for (const [side, got, w, other] of [['soll', soll, ws, wh], ['haben', haben, wh, ws]]) {
+      for (const [acc, amt] of got) {
+        const exp = w.get(acc), accOk = exp !== undefined, amtOk = accOk && (a.noAmounts || moneyClose(amt, exp));
+        lines[side].push({ acc, accOk, amtOk });
+        if (accOk && amtOk) right++;
+        if (!accOk && other.has(acc)) msgs.push(`${a.accounts.find(x => x.no === acc)?.name || acc} steht auf der falschen Seite: Soll und Haben vertauscht?`);
+        else if (accOk && !amtOk) msgs.push(`Der Betrag bei ${acc} stimmt noch nicht.`);
+      }
+      for (const acc of w.keys()) if (!got.has(acc) && !(other === wh ? haben : soll).has(acc) && acc === '2500') msgs.push('Die Vorsteuer fehlt: Die Umsatzsteuer auf der Rechnung holt sich das Unternehmen vom Finanzamt zurück.');
+    }
+    const extra = [...soll.keys()].filter(k => !ws.has(k)).length + [...haben.keys()].filter(k => !wh.has(k)).length;
+    let effectOk = true;
+    if (a.effect) { total++; effectOk = res.effect === a.effect; if (effectOk) right++; else if (res.effect) msgs.push('Die Auswirkung auf das Eigenkapital stimmt nicht.'); else msgs.push('Gib noch die Auswirkung auf das Eigenkapital an.'); }
+    const ok = right === total && !extra;
+    return { ok, score: Math.max(0, (right - extra) / total), lines, effectOk, msgs: ok ? [] : [...new Set(msgs)] };
+  }
   function check(task, response) {
     const a = task.answer;
     if (a.type === 'fields') {
@@ -1031,27 +1060,56 @@
     }
     if (a.type === 'zones') { const list = response || []; if (a.truth.some((_, i) => !list[i])) return { empty: true, ok: false, score: 0, msgs: ['Markiere zuerst alle Abschnitte.'] }; const marks = a.truth.map((t, i) => list[i] === t), right = marks.filter(Boolean).length; return { ok: right === marks.length, score: right / marks.length, marks, msgs: [] }; }
     if (a.type === 'sketch') return gradeSketch(a, response || []);
+    if (a.type === 'booking') return checkBooking(a, response || {});
     if (a.type === 'selfcheck') { const n = response?.ticks ?? null; if (n === null) return { empty: true, ok: false, score: 0, msgs: [] }; return { ok: n === a.checklist.length, score: n / a.checklist.length, msgs: [] }; }
     throw new Error(`Unbekannter Aufgabentyp ${a.type}`);
   }
 
-  // ---- Task creation ----
-  const genById = id => GENS.find(g => g.id === id);
-  function makeTask(id, stage, seed) {
-    const g = genById(id), st = Math.min(g.max, Math.max(g.min, stage)), r = makeRng(seed);
-    return { lead: '', hints: [], solution: [], plots: [], ...g.make(r, st), gen: id, topic: g.topic, label: g.label, stage: st, seed };
-  }
-
-  // ---- Progress: one score per topic, 0 to 100 ----
-  const TOPIC_IDS = ['mittlere', 'momentan', 'winkel', 'sach', 'weg', 'ableitung', 'grafisch'];
+  // ---- Task creation and progress for one course (a list of generators and its topics) ----
   const emptyProgress = () => ({ topics: {}, test: { best: 0, last: 0, at: 0, runs: 0 } });
-  function validateProgress(raw) {
-    const out = emptyProgress();
-    for (const id of TOPIC_IDS) { const t = raw?.topics?.[id]; if (t && typeof t === 'object') out.topics[id] = { score: Math.min(100, Math.max(0, Math.round(Number(t.score)) || 0)), seen: Math.max(0, Math.trunc(Number(t.seen)) || 0), right: Math.max(0, Math.trunc(Number(t.right)) || 0), at: Number(t.at) || 0 }; }
-    const t = raw?.test;
-    if (t && typeof t === 'object') out.test = { best: Math.max(0, Math.min(100, Number(t.best) || 0)), last: Math.max(0, Math.min(100, Number(t.last) || 0)), at: Number(t.at) || 0, runs: Math.max(0, Math.trunc(Number(t.runs)) || 0) };
-    return out;
+  function engine(GENS, TOPIC_IDS) {
+    const genById = id => GENS.find(g => g.id === id);
+    function makeTask(id, stage, seed) {
+      const g = genById(id), st = Math.min(g.max, Math.max(g.min, stage)), r = makeRng(seed);
+      return { lead: '', hints: [], solution: [], plots: [], ...g.make(r, st), gen: id, topic: g.topic, label: g.label, stage: st, seed };
+    }
+    function validateProgress(raw) {
+      const out = emptyProgress();
+      for (const id of TOPIC_IDS) { const t = raw?.topics?.[id]; if (t && typeof t === 'object') out.topics[id] = { score: Math.min(100, Math.max(0, Math.round(Number(t.score)) || 0)), seen: Math.max(0, Math.trunc(Number(t.seen)) || 0), right: Math.max(0, Math.trunc(Number(t.right)) || 0), at: Number(t.at) || 0 }; }
+      const t = raw?.test;
+      if (t && typeof t === 'object') out.test = { best: Math.max(0, Math.min(100, Number(t.best) || 0)), last: Math.max(0, Math.min(100, Number(t.last) || 0)), at: Number(t.at) || 0, runs: Math.max(0, Math.trunc(Number(t.runs)) || 0) };
+      return out;
+    }
+    function stats(progress) {
+      const out = { total: TOPIC_IDS.length, safe: 0, almost: 0, practice: 0, fresh: 0, solved: 0 };
+      let sum = 0;
+      for (const id of TOPIC_IDS) { const t = progress.topics[id], l = levelOf(t); sum += t?.score || 0; out.solved += t?.right || 0; if (l === 3) out.safe++; else if (l === 2) out.almost++; else if (l === 1) out.practice++; else out.fresh++; }
+      out.progress = Math.round(sum / TOPIC_IDS.length);
+      return out;
+    }
+    // Mixed rounds alternate topics and lean towards weak or long-unseen ones: mixing similar problem types is what the research rewards.
+    function planMix(progress, size, random = Math.random, now = Date.now()) {
+      const out = [];
+      const weight = id => { const t = progress.topics[id]; return 8 + (100 - (t?.score || 0)) + Math.min(30, (now - (t?.at || 0)) / 864e5 * 4); };
+      for (let i = 0; i < size; i++) {
+        const pool = TOPIC_IDS.filter(id => id !== out.at(-1) && out.filter(x => x === id).length < Math.ceil(size / 3));
+        let roll = random() * pool.reduce((s, id) => s + weight(id), 0), chosen = pool[0];
+        for (const id of pool) { roll -= weight(id); if (roll <= 0) { chosen = id; break; } }
+        out.push(chosen);
+      }
+      return out;
+    }
+    // Foundation tasks come first while a topic is new; later the generators are drawn at random.
+    function pickGen(topic, stage, used = [], random = Math.random) {
+      const all = GENS.filter(g => g.topic === topic && g.min <= stage && g.max >= stage);
+      const fresh = all.filter(g => !used.includes(g.id)), pool = fresh.length ? fresh : all;
+      if (stage === 1) return [...pool].sort((a, b) => a.rank - b.rank)[0];
+      return pool[Math.floor(random() * pool.length)];
+    }
+    return { GENS, TOPIC_IDS, genById, makeTask, validateProgress, stats, planMix, pickGen };
   }
+  const TOPIC_IDS = ['mittlere', 'momentan', 'winkel', 'sach', 'weg', 'ableitung', 'grafisch'];
+  const E = engine(GENS, TOPIC_IDS), { genById, makeTask, validateProgress, stats, planMix, pickGen } = E;
   const stageFor = score => score < 35 ? 1 : score < 70 ? 2 : 3;
   const levelOf = t => !t?.seen ? 0 : t.score < 40 ? 1 : t.score < 80 ? 2 : 3;
   function applyResult(progress, topic, score, stage, now = Date.now()) {
@@ -1060,33 +1118,6 @@
     progress.topics[topic] = { score: Math.min(100, Math.max(0, t.score + delta)), seen: t.seen + 1, right: t.right + (score >= 1 ? 1 : 0), at: now };
     return progress.topics[topic];
   }
-  function stats(progress) {
-    const out = { total: TOPIC_IDS.length, safe: 0, almost: 0, practice: 0, fresh: 0, solved: 0 };
-    let sum = 0;
-    for (const id of TOPIC_IDS) { const t = progress.topics[id], l = levelOf(t); sum += t?.score || 0; out.solved += t?.right || 0; if (l === 3) out.safe++; else if (l === 2) out.almost++; else if (l === 1) out.practice++; else out.fresh++; }
-    out.progress = Math.round(sum / TOPIC_IDS.length);
-    return out;
-  }
-  // Mixed rounds alternate topics and lean towards weak or long-unseen ones: mixing similar problem types is what the research rewards.
-  function planMix(progress, size, random = Math.random, now = Date.now()) {
-    const out = [];
-    const weight = id => { const t = progress.topics[id]; return 8 + (100 - (t?.score || 0)) + Math.min(30, (now - (t?.at || 0)) / 864e5 * 4); };
-    for (let i = 0; i < size; i++) {
-      const pool = TOPIC_IDS.filter(id => id !== out.at(-1) && out.filter(x => x === id).length < Math.ceil(size / 3));
-      let roll = random() * pool.reduce((s, id) => s + weight(id), 0), chosen = pool[0];
-      for (const id of pool) { roll -= weight(id); if (roll <= 0) { chosen = id; break; } }
-      out.push(chosen);
-    }
-    return out;
-  }
-  // Foundation tasks come first while a topic is new; later the generators are drawn at random.
-  function pickGen(topic, stage, used = [], random = Math.random) {
-    const all = GENS.filter(g => g.topic === topic && g.min <= stage && g.max >= stage);
-    const fresh = all.filter(g => !used.includes(g.id)), pool = fresh.length ? fresh : all;
-    if (stage === 1) return [...pool].sort((a, b) => a.rank - b.rank)[0];
-    return pool[Math.floor(random() * pool.length)];
-  }
-
   // ---- Test simulation: tasks with one shared context and several parts, in the style of the practice test ----
   function testBahn(r) {
     const g = bahn(r), [t1, t2] = bahnInterval(r, g, 2), s1 = g.s(t1), s2 = g.s(t2), v = (s2 - s1) / (t2 - t1), t0 = g.step * r.int(1, g.n - 1);
@@ -1170,5 +1201,6 @@
     return { seed, size, tasks: out, points: out.flatMap(t => t.parts).reduce((sum, p) => sum + p.points, 0) };
   }
 
-  return { TOPIC_IDS, GENS, rich, texHtml, escHtml, makeRng, round, fmt, par, parseNumber, polyVal, polyDer, polyFromRoots, polyTex, signRoots, localExtrema, minMax, niceRange, hermite, waveCurve, shape, knotShape, spec, genById, makeTask, check, checkField, gradeSketch, emptyProgress, validateProgress, stageFor, levelOf, applyResult, stats, planMix, pickGen, buildTest };
+  const kit = { field, select, fields, mc, unique, makeRng, round, fmt, close, repeat };
+  return { engine, kit, emptyProgress, checkBooking, TOPIC_IDS, GENS, rich, texHtml, escHtml, makeRng, round, fmt, par, parseNumber, polyVal, polyDer, polyFromRoots, polyTex, signRoots, localExtrema, minMax, niceRange, hermite, waveCurve, shape, knotShape, spec, genById, makeTask, check, checkField, gradeSketch, emptyProgress, validateProgress, stageFor, levelOf, applyResult, stats, planMix, pickGen, buildTest };
 });

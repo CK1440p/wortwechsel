@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const C = window.WWCore, M = window.WWMath, $ = s => document.querySelector(s), KEY = 'wortwechsel.v1';
+  const C = window.WWCore, M = window.WWMath, RW_CORE = window.WWRw, $ = s => document.querySelector(s), KEY = 'wortwechsel.v1';
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const icons = {
     grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
@@ -76,6 +76,7 @@
   data.grammar = C.validateGrammarProgress(data.grammar);
   data.catalogs = withCatalogSeeds(data.catalogs);
   data.math = M.validateProgress(data.math);
+  data.rw = RW_CORE.validateProgress(data.rw);
   let selectedId = data.selectedId || data.sets[0]?.id, view = 'library', session = null, flash = null, termSearch = '', librarySearch = '';
   let importDraft = null, importTarget = null, importRaw = '', importWarnings = [], toastTimer, fileLoadVersion = 0;
   const currentSet = () => data.sets.find(s => s.id === selectedId) || data.sets[0];
@@ -100,7 +101,9 @@
   }
   function toast(message) { const el = $('#toast'); el.textContent = message; el.classList.add('visible'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('visible'), 4200); }
   function renderShell(title = 'Meine Lernsets') {
-    if (MATH_VIEWS.includes(view)) subject = MATH; else mathApp.leave();
+    const courseApp = appForView(view);
+    if (courseApp) subject = courseApp.course.subject;
+    courseApps.forEach(a => { if (a !== courseApp) a.leave(); });
     if (VOCAB_VIEWS.includes(view)) subject = VOCAB;
     else if (['catalog', 'qa-learn', 'qa-test'].includes(view) && currentCatalog()) subject = currentCatalog().subject;
     if (view !== 'qa-learn') qa = null;
@@ -109,10 +112,8 @@
     syncSubjectUi();
     $('#breadcrumb').innerHTML = `${esc(subject)} <span>/</span> <strong>${esc(title)}</strong>`;
     $('#set-count').textContent = data.sets.length;
-    document.querySelectorAll('.nav-item[data-view]').forEach(el => el.classList.toggle('active', view === el.dataset.view || (el.dataset.view === 'catalogs' && view === 'catalog') || (el.dataset.view === 'math' && view === 'math-topic')));
-    $('#nav-math-mix').classList.toggle('active', view === 'math-practice');
-    $('#nav-math-test').classList.toggle('active', view === 'math-test');
-    $('#nav-math-formulas').classList.toggle('active', view === 'math-formulas');
+    document.querySelectorAll('.nav-item[data-view]').forEach(el => el.classList.toggle('active', view === el.dataset.view || (el.dataset.view === 'catalogs' && view === 'catalog') || view === `${el.dataset.view}-topic`));
+    for (const K of ['math', 'rw']) for (const part of ['mix', 'test', 'formulas']) $(`#nav-${K}-${part}`).classList.toggle('active', view === `${K}-${part === 'mix' ? 'practice' : part}`);
     $('#nav-practice').classList.toggle('active', view === 'learn');
     $('#nav-qa-learn').classList.toggle('active', view === 'qa-learn');
     $('#nav-qa-test').classList.toggle('active', view === 'qa-test');
@@ -496,14 +497,14 @@
   }
   // ---- Subjects (Fächer). Spanisch keeps the vocabulary tools, every other subject is made of question catalogues. ----
   const VOCAB = 'Spanisch', VOCAB_VIEWS = ['library', 'set', 'learn', 'flashcards', 'dialogs', 'grammar'], SUBJECT_KEY = 'wortwechsel.subject';
-  const MATH = 'Mathe', MATH_VIEWS = ['math', 'math-topic', 'math-practice', 'math-test', 'math-formulas'];
+  const MATH = 'Mathe', RW = 'Rechnungswesen';
   const QA_LEVELS = ['Neu', 'Üben', 'Fast', 'Sicher'];
-  const SUBJECT_EMOJI = { geschichte: '🏛️', gpb: '🏛️', biologie: '🧬', bio: '🧬', chemie: '⚗️', physik: '🔭', mathe: '📐', mathematik: '📐', geografie: '🌍', geographie: '🌍', gwk: '🌍', deutsch: '📖', englisch: '💂', wirtschaft: '📈', bwl: '📈', recht: '⚖️', informatik: '💻', religion: '🕊️', ethik: '🕊️', musik: '🎵', kunst: '🎨', psychologie: '🧠', philosophie: '💭', politik: '🗳️' };
+  const SUBJECT_EMOJI = { geschichte: '🏛️', gpb: '🏛️', biologie: '🧬', bio: '🧬', chemie: '⚗️', physik: '🔭', mathe: '📐', mathematik: '📐', rechnungswesen: '🧾', rw: '🧾', rechnungswesen: '🧾', rw: '🧾', geografie: '🌍', geographie: '🌍', gwk: '🌍', deutsch: '📖', englisch: '💂', wirtschaft: '📈', bwl: '📈', recht: '⚖️', informatik: '💻', religion: '🕊️', ethik: '🕊️', musik: '🎵', kunst: '🎨', psychologie: '🧠', philosophie: '💭', politik: '🗳️' };
   let subject = VOCAB, catalogId = null, qa = null, qaTest = null, qaFilter = 'all', qaDraft = null, qaEditing = null, testTimer = null;
   try { subject = localStorage.getItem(SUBJECT_KEY) || VOCAB; } catch {}
   const reduced = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const sameSubject = (a, b) => C.normalize(a) === C.normalize(b);
-  const subjectList = () => { const out = [VOCAB]; for (const c of data.catalogs) if (!out.some(s => sameSubject(s, c.subject))) out.push(c.subject); if (!out.some(s => sameSubject(s, MATH))) out.push(MATH); return out; };
+  const subjectList = () => { const out = [VOCAB]; for (const c of data.catalogs) if (!out.some(s => sameSubject(s, c.subject))) out.push(c.subject); for (const s of [MATH, RW]) if (!out.some(x => sameSubject(x, s))) out.push(s); return out; };
   const subjectCatalogs = (name = subject) => data.catalogs.filter(c => sameSubject(c.subject, name));
   const subjectEmoji = name => sameSubject(name, VOCAB) ? '🇪🇸' : SUBJECT_EMOJI[C.normalize(name)] || subjectCatalogs(name)[0]?.emoji || '📘';
   const currentCatalog = () => data.catalogs.find(c => c.id === catalogId);
@@ -523,10 +524,11 @@
       el.querySelectorAll('.subject-tab').forEach(tab => tab.setAttribute('aria-selected', String(sameSubject(tab.dataset.subject, subject))));
       moveSubjectThumb();
     }
-    const vocab = sameSubject(subject, VOCAB), math = sameSubject(subject, MATH);
+    const vocab = sameSubject(subject, VOCAB), math = sameSubject(subject, MATH), rw = sameSubject(subject, RW);
     if ($('#nav-vocab').hidden !== !vocab) $('#nav-vocab').hidden = !vocab;
     if ($('#nav-math').hidden !== !math) $('#nav-math').hidden = !math;
-    if ($('#nav-qa').hidden !== (vocab || math)) $('#nav-qa').hidden = vocab || math;
+    if ($('#nav-rw').hidden !== !rw) $('#nav-rw').hidden = !rw;
+    if ($('#nav-qa').hidden !== (vocab || math || rw)) $('#nav-qa').hidden = vocab || math || rw;
     $('#nav-vocab-catalogs').hidden = !subjectCatalogs(VOCAB).length;
     try { localStorage.setItem(SUBJECT_KEY, subject); } catch {}
   }
@@ -548,8 +550,8 @@
       main.animate([{ opacity: 0, filter: 'blur(8px)', transform: 'translateY(14px) scale(.99)' }, { opacity: 1, filter: 'blur(0)', transform: 'none' }], { duration: 520, easing: 'cubic-bezier(.16,1,.3,1)' });
     }, () => {});
   }
-  const busy = () => !!(session?.current || dlg || gram || qa || qaTest?.phase === 'write' || mathApp.busy());
-  const homeOfSubject = () => sameSubject(subject, VOCAB) ? drawLibrary() : sameSubject(subject, MATH) ? mathApp.home() : drawCatalogs();
+  const busy = () => !!(session?.current || dlg || gram || qa || qaTest?.phase === 'write' || courseApps.some(a => a.busy()));
+  const homeOfSubject = () => sameSubject(subject, VOCAB) ? drawLibrary() : appForSubject() ? appForSubject().home() : drawCatalogs();
   function switchSubject(name) {
     const go = () => {
       subject = name; syncSubjectUi();
@@ -589,7 +591,7 @@
   const levelLegend = s => `<div class="qa-legend"><span><i class="l3"></i>Sicher <strong>${s.safe}</strong></span><span><i class="l2"></i>Fast <strong>${s.almost}</strong></span><span><i class="l1"></i>Üben <strong>${s.practice}</strong></span><span><i class="l0"></i>Neu <strong>${s.fresh}</strong></span></div>`;
   const levelBar = s => `<div class="qa-stack" aria-hidden="true">${[['l3', s.safe], ['l2', s.almost], ['l1', s.practice], ['l0', s.fresh]].filter(([, n]) => n).map(([cls, n], i) => `<span class="${cls}" style="flex:${n};--i:${i}"></span>`).join('')}</div>`;
   function drawCatalogs() {
-    if (sameSubject(subject, MATH)) return mathApp.home();
+    if (appForSubject()) return appForSubject().home();
     view = 'catalogs'; session = null; flash = null; renderShell('Übersicht');
     const list = subjectCatalogs();
     if (!list.length && !sameSubject(subject, VOCAB)) { subject = VOCAB; return drawLibrary(); }
@@ -997,6 +999,7 @@
       }
       data.grammar = C.mergeStates({ grammar: data.grammar }, { grammar: backup.grammar }).grammar;
       if (backup.math) data.math = M.validateProgress(C.mergeMath(data.math, backup.math));
+      if (backup.rw) data.rw = RW_CORE.validateProgress(C.mergeMath(data.rw, backup.rw));
       for (const raw of Array.isArray(backup.catalogs) ? backup.catalogs : []) {
         const builtIn = data.catalogs.find(c => c.seed && c.id === raw?.id);
         if (builtIn) { Object.assign(builtIn, C.mergeCatalogs([builtIn], [C.validateCatalog({ ...raw, questions: builtIn.questions })].filter(Boolean))[0]); continue; }
@@ -1008,24 +1011,29 @@
   }
   function download(name, text, type) { const blob = new Blob([text], { type }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000); }
   function exportSet() { const s = currentSet(); download(s.title.replace(/[<>:"/\\|?*]/g, '-') + '.txt', '\uFEFF' + C.serializeTerms(s.terms), 'text/plain;charset=utf-8'); toast('Vokabelliste exportiert.'); }
-  function exportBackup() { download(`wortwechsel-sicherung-${localDate()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sets: data.sets, dialogs: data.dialogs, grammar: data.grammar, catalogs: data.catalogs, math: data.math, settings: data.settings }, null, 2), 'application/json'); toast('Sicherung exportiert. Über „Neues Lernset“ wieder importieren.'); }
+  function exportBackup() { download(`wortwechsel-sicherung-${localDate()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sets: data.sets, dialogs: data.dialogs, grammar: data.grammar, catalogs: data.catalogs, math: data.math, rw: data.rw, settings: data.settings }, null, 2), 'application/json'); toast('Sicherung exportiert. Über „Neues Lernset“ wieder importieren.'); }
   function confirmAction(title, text, label, fn) {
     const d = $('#confirm-dialog');
     d.innerHTML = `<div class="dialog-header"><h2 id="confirm-heading">${esc(title)}</h2><button class="icon-button" data-close="confirm-dialog" aria-label="Schließen">${icon('close')}</button></div><p>${esc(text)}</p><div class="dialog-footer"><button class="button secondary" data-close="confirm-dialog">Abbrechen</button><button class="button primary" id="confirm-action">${esc(label)}</button></div>`;
     $('#confirm-action').addEventListener('click', () => { d.close(); fn(); }, { once: true }); d.showModal();
   }
-  const mathApp = window.WWMathApp.create({
+  const courseCtx = {
     $, esc, icon, toast, reduced, transition, ring, levelLegend, levelBar, streak, save,
-    confirm: confirmAction, data: () => data, catalogs: () => subjectCatalogs(MATH),
+    confirm: confirmAction, data: () => data, 
     shell(next, title) { view = next; session = null; flash = null; renderShell(title); },
     countAnswer() { data.history[localDate()] = (Number(data.history[localDate()]) || 0) + 1; },
-  });
+  };
+  const mathApp = window.WWMathApp.create({ ...courseCtx, catalogs: () => subjectCatalogs(MATH) }, window.WWMathCourse);
+  const rwApp = window.WWMathApp.create({ ...courseCtx, catalogs: () => subjectCatalogs(RW) }, window.WWRwCourse);
+  const courseApps = [mathApp, rwApp];
+  function appForView(v) { return courseApps.find(a => a.views.includes(v)); }
+  function appForSubject(name = subject) { return courseApps.find(a => sameSubject(a.course.subject, name)); }
   document.addEventListener('click', e => {
     const close = e.target.closest('[data-close]'); if (close) return document.getElementById(close.dataset.close).close();
     const tab = e.target.closest('[data-subject]'); if (tab) return switchSubject(tab.dataset.subject);
     const btn = e.target.closest('[data-action]'); if (!btn || btn.disabled) return;
     const action = btn.dataset.action;
-    if (action.startsWith('m-')) return mathApp.action(action, btn);
+    if (action.startsWith('m-')) return (appForSubject() || mathApp).action(action, btn);
     if (btn.dataset.id) { selectedId = btn.dataset.id; save(); }
     if (btn.dataset.table) grammarId = btn.dataset.table;
     if (btn.dataset.catalog) catalogId = btn.dataset.catalog;
@@ -1137,7 +1145,7 @@
   document.addEventListener('keydown', e => {
     if (e.ctrlKey || e.altKey || e.metaKey || document.querySelector('dialog[open]')) return;
     const input = /INPUT|TEXTAREA|SELECT/.test(e.target.tagName);
-    if (MATH_VIEWS.includes(view)) return mathApp.key(e, input);
+    if (appForView(view)) return appForView(view).key(e, input);
     if (view === 'dialogs' && dlg?.answered && e.key === 'Enter' && !e.repeat && e.target.dataset?.action !== 'dlg-accept') { e.preventDefault(); return nextDialogLine(); }
     if (view === 'learn' && session?.current) {
       if (e.repeat) return;
@@ -1164,9 +1172,9 @@
   window.WWApp = {
     toast,
     snapshot: () => data,
-    canApply: () => !storageBlocked && !session?.current && !dlg && !gram && !qa && !qaTest && !mathApp.busy() && !document.querySelector('dialog[open]'),
+    canApply: () => !storageBlocked && !session?.current && !dlg && !gram && !qa && !qaTest && !courseApps.some(a => a.busy()) && !document.querySelector('dialog[open]'),
     apply(raw) {
-      const next = hydrate(raw); next.dialogs = mergeDialogs(next.dialogs); next.grammar = C.validateGrammarProgress(next.grammar); next.catalogs = withCatalogSeeds(next.catalogs); next.math = M.validateProgress(next.math);
+      const next = hydrate(raw); next.dialogs = mergeDialogs(next.dialogs); next.grammar = C.validateGrammarProgress(next.grammar); next.catalogs = withCatalogSeeds(next.catalogs); next.math = M.validateProgress(next.math); next.rw = RW_CORE.validateProgress(next.rw);
       data = next;
       if (!data.sets.some(s => s.id === selectedId)) selectedId = data.selectedId && data.sets.some(s => s.id === data.selectedId) ? data.selectedId : data.sets[0]?.id;
       applyingRemote = true; save(); applyingRemote = false;
@@ -1176,7 +1184,7 @@
       else if (view === 'dialogs' && document.querySelector('.dialog-grid')) drawDialogs();
       else if (view === 'grammar' && document.querySelector('.dialog-grid')) drawGrammarList();
       else if (view === 'grammar' && document.querySelector('.gram-table')) drawGrammar();
-      else if (view === 'math') mathApp.home();
+      else if (appForView(view)?.course.key === view) appForView(view).home();
       else if (view === 'catalogs') drawCatalogs();
       else if (view === 'catalog') drawCatalog();
       else renderShell();
@@ -1184,6 +1192,6 @@
   };
   $('#storage-warning').hidden = !storageFailed;
   save(); hydrateIcons();
-  if (sameSubject(subject, MATH)) mathApp.home();
+  if (appForSubject()) appForSubject().home();
   else if (!sameSubject(subject, VOCAB) && subjectCatalogs().length) drawCatalogs(); else drawLibrary();
 })();

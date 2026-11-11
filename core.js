@@ -313,6 +313,7 @@
     out.grammar = grammar;
     if (base?.catalogs || other?.catalogs) out.catalogs = mergeCatalogs(base?.catalogs, other?.catalogs);
     if (base?.math || other?.math) out.math = mergeMath(base?.math, other?.math);
+    if (base?.rw || other?.rw) out.rw = mergeMath(base?.rw, other?.rw);
     return out;
   }
   // Maths progress: per topic the newer entry wins, the best test result is kept.
