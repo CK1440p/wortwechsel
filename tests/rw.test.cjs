@@ -219,7 +219,9 @@ test('trainer UI: type a booking, get green fields, finish a case', () => {
   // Fill the first booking through the fields, the way a learner types it.
   const first = books[0], typeIn = (sel, v) => { const el = first.querySelector(sel); el.value = v; a.fire(el, 'input'); a.fire(el, 'focusout'); return el; };
   const accs = [...first.querySelectorAll('.tr-a')], vals = [...first.querySelectorAll('.tr-v')];
-  const soll = a.text().match(/€ ([\d.]+,\d\d) \+ € ([\d.]+,\d\d) USt = € ([\d.]+,\d\d)/);
+  // The first document is either text or a real invoice; read the amounts from whichever is shown.
+  const inv0 = a.$('.tr-step[data-step="0"] .bl-inv');
+  const soll = inv0 ? [null, ...[...inv0.querySelectorAll('.bl-sum div')].filter(x => /Nettobetrag|USt|Rechnungsbetrag/.test(x.textContent)).map(x => x.querySelector('b').textContent.replace('€ ', ''))] : a.$('.tr-step[data-step="0"]').textContent.match(/€ ([\d.]+,\d\d) \+ € ([\d.]+,\d\d) USt = € ([\d.]+,\d\d)/);
   const supplierNo = a.$('.tr-doc').textContent.match(/\((\d{5})\)/)?.[1] || a.$('.tr-intro').textContent.match(/\((\d{5})\)/)[1];
   const wrong = typeIn('.tr-a[data-k="ha"][data-r="0"]', '3300');
   assert.ok(wrong.classList.contains('bad')); assert.match(first.querySelector('.tr-msg').textContent, /Personenkonto/);
@@ -253,4 +255,43 @@ test('trainer UI: "Keine Buchung" in valuation cases', () => {
   const kauf = books[0]; a.click(kauf.querySelector('.tr-none'));
   assert.ok(kauf.querySelector('.tr-none').classList.contains('bad'));
   assert.match(kauf.querySelector('.tr-msg').textContent, /Buchung nötig/);
+});
+
+test('trainer vouchers match the bookings and use made-up bank data', () => {
+  const ibanValid = iban => { const s = iban.replace(/ /g, ''), re = s.slice(4) + s.slice(0, 4); let m = 0; for (const ch of re) { const v = /[A-Z]/.test(ch) ? String(ch.charCodeAt(0) - 55) : ch; for (const c of v) m = (m * 10 + Number(c)) % 97; } return m === 1; };
+  let docs = 0;
+  for (const t of T.TEMPLATES) for (let seed = 1; seed <= 150; seed++) {
+    const c = T.makeCase(t.id, seed), where = `${t.id} seed ${seed}`;
+    const shown = c.steps.filter(s => s.doc && s.asDoc);
+    if (c.steps.some(s => s.doc)) assert.ok(shown.length >= 1, `${where} at least one voucher`);
+    for (const s of c.steps.filter(x => x.doc)) {
+      const dc = s.doc, b = s.bookings; docs++;
+      assert.ok(s.lead && !/undefined|NaN/.test(s.lead), where);
+      if (dc.kind === 'invoice') {
+        assert.ok(Math.abs(b[0].haben[0].amt - dc.gross) < 0.005, `${where} invoice total`);
+        if (!dc.grossOnly) { assert.ok(Math.abs(dc.net + dc.vat - dc.gross) < 0.005); assert.ok(Math.abs(dc.lines.reduce((x, l) => x + l.total, 0) - dc.disc - dc.net) < 0.005); }
+        assert.equal(ibanValid(dc.from.iban), false, `${where} IBAN must not be valid`);
+        assert.match(dc.from.uid, /^ATU\d{8}$/);
+        assert.match(s.lead, new RegExp(b[0].haben[0].acc), `${where} the supplier account number is given`);
+      }
+      if (dc.kind === 'receipt') { assert.ok(Math.abs(b[0].haben[0].amt - dc.total) < 0.005); assert.ok(Math.abs(dc.net + dc.vat - dc.total) < 0.005); assert.equal(b[0].haben[0].acc, { Bar: '2700', Debitkarte: '3190', Kreditkarte: '3180' }[dc.pay]); }
+      if (dc.kind === 'bank') { const out = -dc.rows.reduce((x, r) => x + r.amount, 0), bank = b.flatMap(x => [...x.soll, ...x.haben]).filter(l => l.acc === '2800').reduce((x, l) => x + l.amt, 0); assert.ok(Math.abs(out - bank) < 0.005, `${where} bank amount`); assert.ok(dc.now >= 0 && Math.abs(dc.old - out - dc.now) < 0.005); }
+    }
+  }
+  assert.ok(docs > 3000);
+  assert.equal(T.makeCase('kauf', 5, { docs: 0 }).steps.some(s => s.asDoc), false);
+  assert.ok(T.makeCase('kauf', 5, { docs: 1 }).steps.filter(s => s.doc).every(s => s.asDoc));
+});
+test('trainer UI: one document after the other, vouchers are shown', () => {
+  const a = app();
+  a.click('[data-subject="Rechnungswesen"]'); a.click('#nav-rw-trainer'); a.click('[data-action="t-open"][data-tpl="kauf"]');
+  const steps = () => [...a.document.querySelectorAll('.tr-step')];
+  assert.equal(steps()[0].hidden, false); assert.equal(steps()[1].hidden, true); assert.match(a.$('#tr-next').textContent, /Noch \d+ Belege/);
+  a.click(steps()[0].querySelector('[data-action="t-solve"]'));
+  assert.equal(steps()[1].hidden, false); assert.equal(steps()[2].hidden, true);
+  // Over a few cases at least one real invoice shows up.
+  let seen = false;
+  for (let i = 0; i < 12 && !seen; i++) { a.click('.tr-actions [data-action="t-new"]'); if (a.$('#confirm-dialog').hasAttribute('open')) a.click('#confirm-action'); seen = !!a.$('.tr-step:not([hidden]) .bl-inv'); }
+  assert.ok(seen, 'an invoice voucher is rendered');
+  const inv = a.$('.bl-inv'); assert.match(inv.textContent, /Rechnungsbetrag/); assert.match(inv.textContent, /20 % USt/); assert.match(inv.textContent, /IBAN AT/);
 });
