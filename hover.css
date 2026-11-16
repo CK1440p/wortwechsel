@@ -93,7 +93,7 @@
   .sidebar nav{position:relative;isolation:isolate}
   .nav-pill{position:absolute;left:0;top:0;z-index:-1;border-radius:11px;background:color-mix(in srgb,var(--spot-color) 9%,var(--surface));box-shadow:0 0 0 1px color-mix(in srgb,var(--spot-color) 14%,transparent) inset;opacity:0;scale:.96;pointer-events:none;
     transition:transform .5s var(--snap),width .5s var(--snap),height .5s var(--snap),opacity .3s var(--glide),scale .4s var(--snap)}
-  [data-theme="dark"] .nav-pill{background:#1d1f33}
+  [data-theme="dark"] .nav-pill{background:#202020}
   .nav-pill.visible{opacity:1;scale:1}
   html[data-theme] body .sidebar .nav-item:not(.active):hover{background:transparent;color:var(--text)}
   .nav-item>.icon,.nav-item>span>.icon,.nav-item .icon{transition:transform .5s var(--snap)}

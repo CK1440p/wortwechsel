@@ -1,12 +1,12 @@
 /* Subjects (Fächer) and question catalogues. Motion follows one spring curve; everything collapses under reduced motion. */
 :root{--spring:cubic-bezier(.32,1.25,.5,1);--l3:#2fb36b;--l2:#f2a33a;--l1:#ef5d6f;--l0:#c5cad8;--card-shadow:0 1px 2px #1a22440a,0 10px 40px #1a224410;--mark:#7659ed1f}
-:root[data-theme="dark"]{--l3:#5fd99a;--l2:#ffc56b;--l1:#ff8a99;--l0:#454c64;--card-shadow:0 1px 0 #ffffff08 inset,0 18px 50px #0006;--mark:#a997ff2e}
+:root[data-theme="dark"]{--l3:#5fd99a;--l2:#ffc56b;--l1:#ff8a99;--l0:#4d4d4d;--card-shadow:0 1px 0 #ffffff08 inset,0 18px 50px #0006;--mark:#a997ff2e}
 
 /* Segmented subject control with a sliding thumb */
 .subject-switch{position:relative;display:flex;flex-direction:column;gap:2px;padding:4px;margin:0 6px 22px;border-radius:14px;background:#eef0f7;isolation:isolate}
-[data-theme="dark"] .subject-switch{background:#171b29;box-shadow:inset 0 0 0 1px var(--border)}
+[data-theme="dark"] .subject-switch{background:#1b1b1b;box-shadow:inset 0 0 0 1px var(--border)}
 .subject-thumb{position:absolute;left:0;top:0;z-index:-1;border-radius:10px;background:var(--surface);box-shadow:0 1px 2px #1a224414,0 4px 14px #1a22441a;transition:transform .5s var(--spring),width .5s var(--spring),height .5s var(--spring)}
-[data-theme="dark"] .subject-thumb{background:#2a2f45;box-shadow:0 1px 0 #ffffff12 inset,0 6px 18px #0007}
+[data-theme="dark"] .subject-thumb{background:#303030;box-shadow:0 1px 0 #ffffff12 inset,0 6px 18px #0007}
 .subject-tab{min-width:0;display:flex;align-items:center;justify-content:flex-start;gap:10px;padding:9px 11px;border-radius:10px;background:transparent;font-size:13px;font-weight:650;color:var(--muted);transition:color .3s,transform .3s var(--spring)}
 .subject-tab[aria-selected="true"]{color:var(--text)}
 .subject-tab:active{transform:scale(.97)}

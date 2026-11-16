@@ -2,8 +2,8 @@
    The shine used to be a pseudo-element as wide as the fill. Only the track clipped it, so half of every sweep ran
    over the empty track and it never crossed the fill completely. Now the shine is a background layer of the fill
    itself: it is clipped to the fill, always runs from fully left to fully right, then waits. */
-:root{--bar-a:#7c5cff;--bar-b:#d65bd0;--bar-c:#ff8a5c;--bar-d:#4fd1c5;--bar-glow:#8b6cff;--bar-track:#e7eaf5;--bar-tick:#ffffffb3;--bar-hit:#22c55e;--bar-miss:#f43f5e}
-:root[data-theme="dark"]{--bar-a:#8f74ff;--bar-b:#e06ad8;--bar-c:#ff9a6a;--bar-d:#5fe0d3;--bar-glow:#a58bff;--bar-track:#232a3e;--bar-tick:#0b0d16cc;--bar-hit:#4ade80;--bar-miss:#fb7185}
+:root{--bar-a:#7c5cff;--bar-b:#d65bd0;--bar-c:#ff8a5c;--bar-d:#4fd1c5;--bar-track:#e7eaf5;--bar-tick:#ffffffb3;--bar-hit:#22c55e;--bar-miss:#f43f5e}
+:root[data-theme="dark"]{--bar-a:#8f74ff;--bar-b:#e06ad8;--bar-c:#ff9a6a;--bar-d:#5fe0d3;--bar-track:#2a2a2a;--bar-tick:#0d0d0dcc;--bar-hit:#4ade80;--bar-miss:#fb7185}
 
 .mini-progress>span{position:relative;transition:width .7s var(--ease,cubic-bezier(.22,1,.36,1));
   background:
@@ -13,36 +13,26 @@
 /* 0–45 %: the shine crosses the whole fill; 45–100 %: it waits off to the right. The colours flow one full period (seamless). */
 @keyframes bar-shine{0%{background-position:-90% 0,0% 0}45%{background-position:190% 0,90% 0}100%{background-position:190% 0,200% 0}}
 
-/* ---- The bar on top of every learning round: the big one ---- */
-/* :root raises specificity above the dark theme rule [data-theme=dark] :is(...,.mini-progress,...){background:#272d42} in motion-theme.css */
-:root .round-progress .mini-progress{position:relative;height:12px;border-radius:99px;overflow:visible;background-color:var(--bar-track);
-  background-image:repeating-linear-gradient(90deg,transparent 0 calc(100% / var(--steps) - 2px),var(--bar-tick) calc(100% / var(--steps) - 2px) calc(100% / var(--steps)));
-  box-shadow:inset 0 1px 3px #0b10262e}
-.round-progress .mini-progress>span{z-index:1;min-width:12px;border-radius:inherit;transition:width 1s cubic-bezier(.34,1.56,.64,1);
-  box-shadow:0 0 14px -2px var(--bar-glow),0 0 32px -10px var(--bar-b),inset 0 1px 0 #ffffff59}
-/* moving stripes inside the fill */
-.round-progress .mini-progress>span::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  background:repeating-linear-gradient(-45deg,#ffffff2e 0 6px,transparent 6px 12px) 0 0/17px 17px;animation:bar-stripes .9s linear infinite;mix-blend-mode:overlay}
-@keyframes bar-stripes{to{background-position:17px 0}}
-/* glowing head at the tip of the fill */
-.round-progress .mini-progress>span::after{content:'';position:absolute;top:50%;right:-3px;width:18px;height:18px;margin-top:-9px;border-radius:50%;pointer-events:none;
-  background:radial-gradient(circle,#fff 0 28%,color-mix(in srgb,var(--bar-d) 85%,#fff) 42%,transparent 72%);
-  box-shadow:0 0 12px 2px color-mix(in srgb,var(--bar-d) 70%,transparent),0 0 26px 6px color-mix(in srgb,var(--bar-glow) 45%,transparent);
-  animation:bar-head 1.8s ease-in-out infinite}
-@keyframes bar-head{50%{transform:scale(1.25);opacity:.85}}
+/* ---- The bar on top of every learning round: calm, so it does not pull attention from the task ----
+   (2026-11-16: the first version had glow, stripes and a pulsing head; Adam found it distracting during practice.) */
+/* :root raises specificity above the dark theme rule [data-theme=dark] :is(...,.mini-progress,...){background:...} in motion-theme.css */
+:root .round-progress .mini-progress{position:relative;height:8px;border-radius:99px;background-color:var(--bar-track);
+  background-image:repeating-linear-gradient(90deg,transparent 0 calc(100% / var(--steps) - 2px),var(--bar-tick) calc(100% / var(--steps) - 2px) calc(100% / var(--steps)))}
+/* static colours, one soft shine every 8 s */
+.round-progress .mini-progress>span{border-radius:inherit;transition:width .8s cubic-bezier(.22,1,.36,1);
+  background:
+    linear-gradient(100deg,transparent 30%,#ffffff4d 50%,transparent 70%) -90% 0/45% 100% no-repeat,
+    linear-gradient(90deg,var(--bar-a),var(--bar-b) 60%,var(--bar-c)) 0 0/100% 100% no-repeat;
+  animation:bar-shine-calm 8s linear infinite}
+@keyframes bar-shine-calm{0%{background-position:-90% 0,0 0}22%,100%{background-position:190% 0,0 0}}
 
-/* answer feedback: the track flashes, the head bursts */
-.round-progress.hit .mini-progress{animation:bar-hit .9s cubic-bezier(.22,1,.36,1)}
-.round-progress.hit .mini-progress>span::after{animation:bar-burst .9s cubic-bezier(.22,1,.36,1),bar-head 1.8s ease-in-out .9s infinite}
-.round-progress.miss .mini-progress{animation:bar-miss .5s ease-in-out}
-@keyframes bar-hit{0%{box-shadow:inset 0 1px 3px #0b10262e,0 0 0 0 color-mix(in srgb,var(--bar-hit) 70%,transparent)}100%{box-shadow:inset 0 1px 3px #0b10262e,0 0 0 12px transparent}}
-@keyframes bar-burst{0%{transform:scale(1)}35%{transform:scale(2.6);background:radial-gradient(circle,#fff 0 30%,var(--bar-hit) 45%,transparent 72%)}100%{transform:scale(1)}}
-@keyframes bar-miss{0%{box-shadow:inset 0 1px 3px #0b10262e,0 0 0 3px color-mix(in srgb,var(--bar-miss) 65%,transparent)}20%{transform:translateX(-5px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}100%{transform:none;box-shadow:inset 0 1px 3px #0b10262e,0 0 0 3px transparent}}
-/* the count next to the bar pops when it goes up */
-.round-progress.hit>div:first-child span{display:inline-block;animation:bar-count .6s cubic-bezier(.34,1.56,.64,1);color:var(--bar-hit)}
-@keyframes bar-count{40%{transform:scale(1.35)}}
+/* answer feedback: short and quiet */
+.round-progress.hit .mini-progress>span{animation:bar-hit-fill .7s ease-out,bar-shine-calm 8s linear .7s infinite}
+@keyframes bar-hit-fill{40%{filter:brightness(1.25) saturate(1.1)}}
+.round-progress.hit>div:first-child span{color:var(--bar-hit);transition:color .3s}
+.round-progress.miss .mini-progress{animation:bar-miss .6s ease-out}
+@keyframes bar-miss{0%{box-shadow:0 0 0 2px color-mix(in srgb,var(--bar-miss) 55%,transparent)}100%{box-shadow:0 0 0 2px transparent}}
 
 @media(prefers-reduced-motion:reduce){
-  .mini-progress>span,.round-progress .mini-progress>span::before,.round-progress .mini-progress>span::after{animation:none!important}
-  .round-progress.hit .mini-progress,.round-progress.miss .mini-progress{animation:none}
+  .mini-progress>span,.round-progress .mini-progress>span,.round-progress.miss .mini-progress{animation:none!important}
 }

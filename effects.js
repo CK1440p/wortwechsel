@@ -7,7 +7,7 @@
     toggle.setAttribute('aria-pressed', String(dark));
     toggle.setAttribute('aria-label', dark ? 'Hellen Modus aktivieren' : 'Dunklen Modus aktivieren');
     toggle.title = dark ? 'Heller Modus' : 'Dunkler Modus';
-    document.querySelector('meta[name="theme-color"]').content = dark ? '#0b0d16' : '#f7f8fc';
+    document.querySelector('meta[name="theme-color"]').content = dark ? '#0d0d0d' : '#f7f8fc';
   };
   sync();
   toggle.addEventListener('click', () => {
