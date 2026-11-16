@@ -100,7 +100,7 @@ function app(store = new Map()) {
   const localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
   document.querySelectorAll('dialog').forEach(d => { d.showModal = () => d.setAttribute('open', ''); d.close = () => d.removeAttribute('open'); });
   const context = vm.createContext({ window, document, console, crypto: webcrypto, localStorage, requestAnimationFrame: fn => fn(), setTimeout: () => 1, clearTimeout: () => {}, Blob, URL, TextDecoder });
-  for (const script of ['theme.js', 'core.js', 'seed.js', 'mathcore.js', 'math.js', 'rwcore.js', 'rw.js', 'trainer.js', 'app.js', 'effects.js', 'calc.js']) {
+  for (const script of ['theme.js', 'core.js', 'seed.js', 'mathcore.js', 'math.js', 'rwcore.js', 'rw.js', 'trainer.js', 'drill.js', 'app.js', 'effects.js', 'calc.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, script), 'utf8'), context, { filename: script });
     if (script === 'core.js') window.WWCore = context.WWCore;
     if (script === 'mathcore.js') window.WWMath = context.WWMath;
@@ -442,4 +442,44 @@ test('account search: a Kontenplan account beats a supplier that starts the same
   assert.equal(T.resolveAcc('maschinenfabrik', names), '33316');
   assert.equal(T.resolveAcc('gruber', names), '33363');
   assert.equal(T.resolveAcc('33316', names), '33316');
+});
+
+const DRILL = require('../dist/drill.js');
+test('Buchungen merken: every card uses real accounts, a known pattern and a unique id', () => {
+  const ids = new Set(), patterns = new Set(DRILL.PATTERNS.map(p => p.id)), blocks = new Set(DRILL.BLOCKS.map(b => b.id));
+  assert.ok(DRILL.CARDS.length >= 30);
+  for (const c of DRILL.CARDS) {
+    assert.ok(!ids.has(c.id), c.id); ids.add(c.id);
+    assert.ok(patterns.has(c.pattern), c.id); assert.ok(blocks.has(c.block), c.id);
+    for (const a of [...c.soll, ...c.haben]) assert.ok(a === '0…' || a === '33xxx' || T.kontoName(a), `${c.id}: ${a}`);
+    assert.equal(c.pattern === 'keine', !c.soll.length && !c.haben.length, c.id);
+  }
+  for (const p of DRILL.PATTERNS) assert.ok(DRILL.CARDS.some(c => c.pattern === p.id), `no card for ${p.id}`);
+  assert.deepEqual(DRILL.validate({ pkw: { box: 9, seen: 2, at: 5 }, nope: { box: 1 } }), { pkw: { box: 3, seen: 2, at: 5 } });
+});
+test('Buchungen merken: a round with right and wrong patterns, repeats and saved progress', () => {
+  const a = app();
+  a.click('[data-subject="Rechnungswesen"]');
+  assert.ok(a.$('.bk-promo')); assert.equal(a.$('#nav-rw-drill').hidden, false);
+  a.click('#nav-rw-drill'); assert.match(a.text(), /Buchungen merken\./); assert.equal(a.document.querySelectorAll('.bk-patterns li').length, 7);
+  a.click('[data-action="k-block"][data-block="uv"]'); a.click('[data-action="k-start"]');
+  const fall = () => a.$('.bk-fall').textContent, card = () => DRILL.CARDS.find(c => c.fall === fall());
+  // 1st card: right pattern → think → reveal → known
+  const first = card(); a.click(`[data-action="k-pick"][data-p="${first.pattern}"]`);
+  assert.match(a.$('.bk-verdict').textContent, /Richtig/); a.click('[data-action="k-reveal"]');
+  assert.ok(a.$('.bk-answer')); a.click('[data-action="k-rate"][data-v="known"]');
+  assert.equal(a.data().rwk[first.id].box, 2); assert.equal(a.data().rwk[first.id].seen, 1);
+  // 2nd card: wrong pattern → answer shown at once, only "again" → comes back later in the round
+  const second = card(), wrong = DRILL.PATTERNS.find(p => p.id !== second.pattern).id;
+  a.click(`[data-action="k-pick"][data-p="${wrong}"]`);
+  assert.match(a.$('.bk-verdict').textContent, /Das ist/); assert.ok(a.$('.bk-answer')); assert.equal(a.$('[data-action="k-rate"][data-v="known"]'), null);
+  a.click('[data-action="k-rate"][data-v="again"]'); assert.equal(a.data().rwk[second.id].box, 0);
+  let back = false;
+  for (let i = 0; i < 12 && a.$('.bk-fall'); i++) { const c = card(); if (c.id === second.id) back = true; a.click(`[data-action="k-pick"][data-p="${c.pattern}"]`); a.click('[data-action="k-reveal"]'); a.click('[data-action="k-rate"][data-v="known"]'); }
+  assert.ok(back, 'the missed card came back'); assert.ok(a.$('.bk-result')); assert.match(a.text(), /Karten gewusst/);
+});
+test('Buchungen merken: syncing two devices keeps the newer state per card', () => {
+  const C = require('../dist/core.js');
+  const m = C.mergeStates({ rwk: { pkw: { box: 3, seen: 4, at: 200 }, lkw: { box: 1, seen: 1, at: 50 } } }, { rwk: { pkw: { box: 0, seen: 5, at: 100 }, halle: { box: 2, seen: 1, at: 10 } } });
+  assert.deepEqual(m.rwk, { pkw: { box: 3, seen: 4, at: 200 }, lkw: { box: 1, seen: 1, at: 50 }, halle: { box: 2, seen: 1, at: 10 } });
 });
