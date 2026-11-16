@@ -69,11 +69,11 @@
 @keyframes tr-shake{20%,60%{transform:translateX(-5px)}40%,80%{transform:translateX(5px)}}
 
 /* Suggestions */
-.tr-dd{position:absolute;z-index:30;left:0;top:calc(100% + 6px);min-width:100%;width:max-content;max-width:min(440px,86vw);max-height:300px;overflow:auto;margin:0;padding:6px;list-style:none;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:0 22px 50px -12px #1a224440;animation:tr-dd .25s var(--ease)}
-.tr-dd li{display:flex;gap:10px;align-items:baseline;padding:9px 12px;border-radius:11px;font-size:14px;color:var(--text);cursor:pointer;transition:background .15s}
-.tr-dd li b{flex:none;min-width:44px;font-variant-numeric:tabular-nums;color:var(--tr-accent)}
-.tr-dd li span{white-space:normal}
-.tr-dd li.active,.tr-dd li:hover{background:color-mix(in srgb,var(--tr-accent) 13%,var(--surface))}
+.tr-dd,.m-dd{position:absolute;z-index:30;left:0;top:calc(100% + 6px);min-width:100%;width:max-content;max-width:min(440px,86vw);max-height:300px;overflow:auto;margin:0;padding:6px;list-style:none;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:0 22px 50px -12px #1a224440;animation:tr-dd .25s var(--ease)}
+.tr-dd li,.m-dd li{display:flex;gap:10px;align-items:baseline;padding:9px 12px;border-radius:11px;font-size:14px;color:var(--text);cursor:pointer;transition:background .15s}
+.tr-dd li b,.m-dd li b{flex:none;min-width:44px;font-variant-numeric:tabular-nums;color:var(--tr-accent)}
+.tr-dd li span,.m-dd li span{white-space:normal}
+.tr-dd li.active,.tr-dd li:hover,.m-dd li.active,.m-dd li:hover{background:color-mix(in srgb,var(--tr-accent) 13%,var(--surface))}
 @keyframes tr-dd{from{opacity:0;transform:translateY(-6px) scale(.98)}}
 
 /* Footer of a booking */

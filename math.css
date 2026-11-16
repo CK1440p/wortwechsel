@@ -273,7 +273,10 @@
 .m-book-an{align-self:center;font:700 14px 'DM Sans',system-ui,sans-serif;color:var(--muted);padding-top:20px}
 .m-book-lines{display:flex;flex-direction:column;gap:8px}
 .m-book-line{display:grid;grid-template-columns:minmax(0,1fr) 34px;grid-template-areas:"acc del" "amt del";gap:6px;padding:6px;border-radius:14px;border:1.5px solid transparent;transition:border-color .25s,background .3s;animation:enter .4s var(--ease) both}
-.m-book-line .m-select{grid-area:acc}.m-book-line .m-amt{grid-area:amt}.m-book-del{grid-area:del}
+.m-book-line .m-select,.m-book-line .m-acc{grid-area:acc}
+.m-acc{position:relative}
+.m-acc input{font-size:15px;font-weight:600;text-overflow:ellipsis;min-height:42px}
+.m-acc input::placeholder{color:color-mix(in srgb,var(--muted) 70%,transparent);font-weight:500}.m-book-line .m-amt{grid-area:amt}.m-book-del{grid-area:del}
 .m-book-line .m-input{min-height:44px}
 .m-book-line select{font-size:14px!important}
 .m-book-del{align-self:center;display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:transparent;color:var(--muted)}
@@ -328,3 +331,8 @@
   .m-bk-side+.m-bk-side{padding-top:6px;border-top:1px dashed var(--border)}
   .m-afa-ctl{grid-template-columns:1fr}
 }
+/* The enter animation leaves a transform on lines and test items, so each is its own layer: the one being typed in goes on top, or later blocks would cover the account list. */
+.m-book-line:focus-within,.m-book-line:has(.m-dd:not([hidden])){position:relative;z-index:6}
+.qa-test-item:focus-within,.qa-test-item:has(.m-dd:not([hidden])){z-index:6}
+/* Phones: the account field spans the full width, so the list takes exactly its width instead of max-content (which ran 3 px past the screen edge at 390 px). */
+@media(max-width:540px){.m-dd{width:auto;right:0;max-width:none}}
