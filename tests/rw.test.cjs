@@ -239,7 +239,7 @@ test('trainer UI: type a booking, get green fields, finish a case', () => {
   for (const box of books.slice(1)) a.click(box.querySelector('[data-action="t-solve"]'));
   assert.ok(books[1].classList.contains('shown')); assert.match(books[1].querySelector('.tr-a').value, /^0400/);
   // The first booking had a wrong try (3300), so nothing counts as right at the first attempt.
-  assert.ok(a.$('.tr-result')); assert.match(a.$('.tr-result').textContent, /0 von \d+ Buchungen auf Anhieb richtig, \d+ mit Lösung/);
+  assert.ok(a.$('.tr-result')); assert.match(a.$('.tr-result').textContent, /0 von \d+ Aufgaben auf Anhieb richtig, \d+ mit Lösung/);
   const st = a.data().rwt.kauf; assert.equal(st.runs, 1); assert.equal(st.perfect, 0); assert.equal(st.best, 0); assert.equal(st.bookings, 1);
   a.click('.tr-result [data-action="t-new"]'); assert.equal(a.document.querySelectorAll('.tr-book.done').length, 0);
   // A started case asks before it is left.
@@ -286,7 +286,7 @@ test('trainer UI: one document after the other, vouchers are shown', () => {
   const a = app();
   a.click('[data-subject="Rechnungswesen"]'); a.click('#nav-rw-trainer'); a.click('[data-action="t-open"][data-tpl="kauf"]');
   const steps = () => [...a.document.querySelectorAll('.tr-step')];
-  assert.equal(steps()[0].hidden, false); assert.equal(steps()[1].hidden, true); assert.match(a.$('#tr-next').textContent, /Noch \d+ Belege/);
+  assert.equal(steps()[0].hidden, false); assert.equal(steps()[1].hidden, true); assert.match(a.$('#tr-next').textContent, /Noch \d+ Schritte/);
   a.click(steps()[0].querySelector('[data-action="t-solve"]'));
   assert.equal(steps()[1].hidden, false); assert.equal(steps()[2].hidden, true);
   // Over a few cases at least one real invoice shows up.
@@ -294,4 +294,81 @@ test('trainer UI: one document after the other, vouchers are shown', () => {
   for (let i = 0; i < 12 && !seen; i++) { a.click('.tr-actions [data-action="t-new"]'); if (a.$('#confirm-dialog').hasAttribute('open')) a.click('#confirm-action'); seen = !!a.$('.tr-step:not([hidden]) .bl-inv'); }
   assert.ok(seen, 'an invoice voucher is rendered');
   const inv = a.$('.bl-inv'); assert.match(inv.textContent, /Rechnungsbetrag/); assert.match(inv.textContent, /20 % USt/); assert.match(inv.textContent, /IBAN AT/);
+});
+
+test('trainer: depreciation tables and valuation amounts are graded like the book', () => {
+  // Book example Ü 2.3: Pkw € 34.000 from 11.10.2025, 8 years; Lagerhalle € 200.000 from 25.10.2025, 40 years.
+  const pkw = { aw: 34000, nd: 8, rate: 12.5, half: true, annual: 4250, endOfLife: false, awTraps: [], rows: R.afaPlan(34000, 8, 10).rows.slice(0, 2) };
+  assert.deepEqual(pkw.rows.map(x => [x.afa, x.bw]), [[2125, 31875], [4250, 27625]]);
+  const halle = R.afaPlan(200000, 40, 10).rows.slice(0, 3);
+  assert.deepEqual(halle.map(x => [x.afa, x.bw]), [[2500, 197500], [5000, 192500], [5000, 187500]]);
+  const ok = T.gradeAfa(pkw, { aw: '34.000', p0: '12,5', a0: '2125', b0: '31 875', p1: '12,5 %', a1: '4.250,00', b1: '27625' });
+  assert.equal(ok.complete, true);
+  const half = T.gradeAfa(pkw, { aw: '34000', p0: '8', a0: '4250', b0: '29750' });
+  assert.equal(half.fields.p0, 'bad'); assert.equal(half.fields.a0, 'bad'); assert.match(half.msgs.join(), /100 : Nutzungsdauer/); assert.match(half.msgs.join(), /Halbjahresregel/);
+  for (const t of T.TEMPLATES) for (let seed = 1; seed <= 120; seed++) {
+    const c = T.makeCase(t.id, seed), where = `${t.id} ${seed}`;
+    for (const e of T.caseEntries(c)) {
+      if (e.kind === 'afa') {
+        const sp = e.spec, vals = { aw: amt(sp.aw) };
+        sp.rows.forEach((row, i) => { vals[`p${i}`] = String(sp.rate).replace('.', ','); vals[`a${i}`] = amt(row.afa); vals[`b${i}`] = amt(row.bw); });
+        assert.equal(T.gradeAfa(sp, vals).complete, true, where);
+        assert.ok(Math.abs(sp.rows.reduce((x, r) => x + r.afa, 0) + sp.rows.at(-1).bw - sp.aw) < 0.01, `${where} table adds up`);
+        for (const trap of sp.awTraps) assert.ok(Math.abs(trap.value - sp.aw) > 0.005, `${where} trap equals answer`);
+      }
+      if (e.kind === 'val') {
+        assert.equal(T.gradeVal(e.spec, { v: amt(e.spec.value) }).complete, true, where);
+        for (const trap of e.spec.traps) { const g = T.gradeVal(e.spec, { v: amt(trap.value) }); assert.equal(g.complete, false, where); assert.equal(g.msgs[0], trap.msg, where); }
+      }
+    }
+  }
+});
+test('valuation table: values follow the valuation rules', () => {
+  const sum = b => b.soll.reduce((x, l) => x + l.amt, 0);
+  for (let seed = 1; seed <= 300; seed++) {
+    const c = T.makeCase('tabelle', seed), where = `seed ${seed}`;
+    assert.equal(c.layout, 'table'); assert.ok(c.steps.every(s => s.val && s.per));
+    const groups = new Map();
+    c.steps.forEach(s => { if (!groups.has(s.group)) groups.set(s.group, []); groups.get(s.group).push(s); });
+    for (const rows of groups.values()) {
+      const title = rows[0].groupTitle;
+      if (title === 'Handelsware') {
+        const variants = rows.slice(1), top = Math.max(...variants.map(s => s.val.value));
+        assert.equal(variants.length, 3);
+        for (const s of variants) { const b = s.bookings[0]; if (b.none) assert.ok(Math.abs(s.val.value - top) < 0.005, where); else { assert.ok(Math.abs(sum(b) - (top - s.val.value)) < 0.005, where); assert.deepEqual([b.soll[0].acc, b.haben[0].acc], ['7800', '1600']); } }
+        continue;
+      }
+      if (title === 'Privatentnahme') { const b = rows[0].bookings[0]; assert.equal(b.soll[0].acc, '9600'); assert.ok(Math.abs(b.haben[0].amt - rows[0].val.value) < 0.005); continue; }
+      assert.equal(rows[0].bookings.length, 0, `${where} purchase rows only ask for the value`);
+      let prev = rows[0].val.value;
+      const cost = prev;
+      for (const s of rows.slice(1)) {
+        const b = s.bookings[0], diff = Math.round((s.val.value - prev) * 100) / 100;
+        assert.ok(s.val.value <= cost + 0.005, `${where} never above cost: ${s.text}`);
+        if (Math.abs(diff) < 0.005) assert.ok(b.none, `${where} no change, no booking: ${s.text}`);
+        else { assert.ok(Math.abs(sum(b) - Math.abs(diff)) < 0.005, `${where} booking equals the change: ${s.text}`); assert.equal(b.effect, diff > 0 ? '↑' : '↓', where); }
+        if (/vorübergehend/.test(s.text)) assert.ok(b.none, `${where} temporary drop of fixed assets is not booked`);
+        if (/nicht absehbar/.test(s.text) && /Kurs/.test(s.text)) assert.deepEqual([b.soll[0].acc, b.haben[0].acc], ['8200', '0800']);
+        prev = s.val.value;
+      }
+    }
+  }
+});
+test('trainer UI: valuation table and depreciation table', () => {
+  const a = app();
+  a.click('[data-subject="Rechnungswesen"]'); a.click('#nav-rw-trainer'); a.click('[data-action="t-open"][data-tpl="tabelle"]');
+  assert.ok(a.$('.tv-group')); assert.match(a.$('.tr-tasks').textContent, /Wertansätze/);
+  const first = a.$('.tr-step[data-step="0"]'), v = first.querySelector('.tr-val .tr-in');
+  assert.equal(a.$('.tr-step[data-step="1"]').hidden, true);
+  const m = first.querySelector('.tv-text').textContent.match(/([\d.]+) m² zu € ([\d.]+,\d\d)/), A = Number(m[1].replace(/\./g, '')), p0 = Number(m[2].replace(/\./g, '').replace(',', '.'));
+  v.value = String(p0); a.fire(v, 'input'); a.fire(v, 'focusout'); assert.ok(v.classList.contains('bad')); assert.match(first.querySelector('.tr-msg').textContent, /Fläche mal Preis/);
+  v.value = String(A * p0); a.fire(v, 'input'); a.fire(v, 'focusout');
+  assert.ok(first.querySelector('.tr-val').classList.contains('done')); assert.equal(a.$('.tr-step[data-step="1"]').hidden, false);
+  for (let i = 0; i < 60 && a.$('.tr-step:not([hidden]) .tr-book:not(.done):not(.shown) [data-action="t-solve"]'); i++) a.click('.tr-step:not([hidden]) .tr-book:not(.done):not(.shown) [data-action="t-solve"]');
+  assert.ok(a.$('.tr-result')); assert.equal(a.data().rwt.tabelle.runs, 1);
+  // Purchase case with the Excel-style depreciation table.
+  a.click('[data-action="t-home"]'); a.click('[data-action="t-open"][data-tpl="fahrzeug"]');
+  for (let i = 0; i < 40 && !a.$('.tr-step:not([hidden]) .tr-afa'); i++) a.click('.tr-step:not([hidden]) .tr-book:not(.done):not(.shown) [data-action="t-solve"]');
+  const afa = a.$('.tr-step:not([hidden]) .tr-afa'); assert.ok(afa); assert.match(afa.textContent, /Abschreibung 2025/); assert.match(afa.textContent, /Buchwert 1\.1\.2026/);
+  assert.match(a.$('.tr-tasks').textContent, /Berechne die Abschreibungsbeträge/);
 });
