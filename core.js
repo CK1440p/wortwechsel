@@ -314,6 +314,11 @@
     if (base?.catalogs || other?.catalogs) out.catalogs = mergeCatalogs(base?.catalogs, other?.catalogs);
     if (base?.math || other?.math) out.math = mergeMath(base?.math, other?.math);
     if (base?.rw || other?.rw) out.rw = mergeMath(base?.rw, other?.rw);
+    if (base?.rwk || other?.rwk) {
+      // "Buchungen merken" cards: per card the newer entry wins.
+      out.rwk = { ...(other?.rwk || {}) };
+      for (const [id, x] of Object.entries(base?.rwk || {})) if (!out.rwk[id] || (Number(x?.at) || 0) >= (Number(out.rwk[id]?.at) || 0)) out.rwk[id] = x;
+    }
     if (base?.rwt || other?.rwt) {
       // Trainer stats per case template: every counter keeps its higher value.
       out.rwt = { ...(other?.rwt || {}) };

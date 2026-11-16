@@ -67,3 +67,5 @@ body:not(.subject-rw) .calc-toggle,body:not(.subject-rw) .calc,body:not(.subject
   .calc-keys button{height:44px}
   body.keyboard-open .calc{bottom:calc(10px + env(safe-area-inset-bottom))}
 }
+/* Phones: room under the page so the last button can scroll above the round calculator button */
+@media(max-width:540px){body.subject-rw .main-shell{padding-bottom:calc(140px + env(safe-area-inset-bottom))}}
