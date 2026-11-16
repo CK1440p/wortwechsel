@@ -4,6 +4,8 @@ Privater, statischer Lerntrainer für mehrere Fächer. Einstieg: `dist/index.htm
 
 - Fächer: Umschalter in der Seitenleiste. Spanisch hat Lernsets, Dialoge und Grammatik; jedes andere Fach besteht aus Fragenkatalogen. Neue Fächer entstehen, sobald ein Katalog mit diesem Fach gespeichert wird.
 - Fragenkataloge: eingebaut ist „Test GPB · Kalter Krieg, Nahost & Afrika“ (Geschichte, 14 Fragen, 35 Punkte) aus `WWCatalogSeed` in `dist/seed.js`. Eigene Kataloge per Einfügen oder Upload einer Word-Datei (.docx) bzw. Textdatei; erkannt werden „Frage … 2 Punkte“ mit Antwort darunter, „F: … / A: …“ oder Blöcke mit Leerzeile.
+- Rechnungswesen: Bewertung von Vermögen und Schulden, Anlagenkauf, Abschreibung, GWG (Kapitel 1 und 2 des Buchs). Aufgaben in `dist/rwcore.js`, Kursdaten in `dist/rw.js`.
+- Buchungstrainer (`dist/trainer.js`): 8 Fallvorlagen wie im Buch (Ü 2.1 bis 2.4, Bewertung, Privat), jedes Mal mit neuen Zahlen. Konten werden aus dem Kontenplan des Buchs vorgeschlagen, jedes Feld wird beim Verlassen geprüft.
 - Mathe (Differentialrechnung): 7 Themen, 53 Aufgabentypen mit immer neuen Zahlen und Graphen. Stufen Geführt, Selbstständig, Testniveau. Falsche Aufgaben kommen mit neuen Zahlen wieder, „Gemischt üben“ wechselt bewusst die Themen.
 - Interaktive Mathe-Aufgaben: Tangente drehen, Stellen am Graphen antippen, Vorzeichen markieren, $f'$ mit Maus oder Finger zeichnen. Die Skizze wird nach Nullstellen, Vorzeichen und Hochpunkten bewertet, nicht nach exakter Höhe.
 - Mathe-Test: mehrteilige Aufgaben ohne Tipps, danach Lösungswege und Punkte. Aufgaben und Texte stehen in `dist/mathcore.js`, die Oberfläche in `dist/math.js`.

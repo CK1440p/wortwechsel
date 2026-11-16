@@ -100,7 +100,7 @@ function app(store = new Map()) {
   const localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
   document.querySelectorAll('dialog').forEach(d => { d.showModal = () => d.setAttribute('open', ''); d.close = () => d.removeAttribute('open'); });
   const context = vm.createContext({ window, document, console, crypto: webcrypto, localStorage, requestAnimationFrame: fn => fn(), setTimeout: () => 1, clearTimeout: () => {}, Blob, URL, TextDecoder });
-  for (const script of ['theme.js', 'core.js', 'seed.js', 'mathcore.js', 'math.js', 'rwcore.js', 'rw.js', 'app.js', 'effects.js']) {
+  for (const script of ['theme.js', 'core.js', 'seed.js', 'mathcore.js', 'math.js', 'rwcore.js', 'rw.js', 'trainer.js', 'app.js', 'effects.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, script), 'utf8'), context, { filename: script });
     if (script === 'core.js') window.WWCore = context.WWCore;
     if (script === 'mathcore.js') window.WWMath = context.WWMath;
@@ -143,4 +143,114 @@ test('Rechnungswesen test simulation can be submitted and graded', () => {
   a.click('[data-action="m-exam-submit"]'); a.click('#confirm-action');
   assert.match(a.text(), /Korrektur/); assert.ok(a.document.querySelectorAll('.m-book-right .m-bk').length >= 4);
   a.click('[data-action="m-exam-finish"]'); assert.equal(a.data().rw.test.runs, 1); assert.equal(a.data().math.test.runs, 0);
+});
+
+// ---- Buchungstrainer ----
+const T = R.trainer;
+const entryFrom = b => ({ rows: Array.from({ length: Math.max(b.soll.length, b.haben.length, 1) }, (_, r) => ({ sa: b.soll[r] ? T.kontoLabel(b.soll[r].acc) : '', sb: b.soll[r] ? amt(b.soll[r].amt) : '', ha: b.haben[r] ? b.haben[r].acc : '', hb: b.haben[r] ? amt(b.haben[r].amt) : '' })), effect: b.effect, none: !!b.none });
+test('trainer cases: complete texts, balanced bookings, known accounts', () => {
+  for (const t of T.TEMPLATES) for (let seed = 1; seed <= 150; seed++) {
+    const c = T.makeCase(t.id, seed), where = `${t.id} seed ${seed}`, bookings = T.caseBookings(c);
+    assert.ok(bookings.length >= 4, where);
+    const text = JSON.stringify(c);
+    assert.doesNotMatch(text, /NaN|undefined|Infinity|null €|€ −/, where);
+    for (const s of c.steps) for (const x of [s.text, s.info, s.date].filter(Boolean)) assert.equal(String(x).split('$').length % 2, 1, `${where}: ${x}`);
+    for (const b of bookings) {
+      if (b.none) { assert.equal(c.allowNone, true, where); continue; }
+      const sum = side => b[side].reduce((s, l) => s + l.amt, 0);
+      assert.ok(Math.abs(sum('soll') - sum('haben')) < 0.005, `${where} unbalanced ${JSON.stringify(b)}`);
+      for (const l of [...b.soll, ...b.haben]) { assert.ok(l.amt > 0, where); assert.ok(T.kontoName(l.acc, c.names), `${where} unknown account ${l.acc}`); }
+      assert.ok(b.effect === null || ['↑', '↓', 'Ø'].includes(b.effect), where);
+      if (b.soll.some(l => l.acc === '2500')) assert.ok(b.haben.some(l => /^33\d{3}$|^2[78]00$|^3[19]\d0$|^2700$/.test(l.acc)) || b.soll.length, where);
+    }
+    // Dates of documents run forward in time.
+    const dates = c.steps.filter(s => s.date && s.beleg).map(s => { const [dd, mm, yy] = s.date.split('.').map(Number); return yy * 400 + mm * 32 + dd; });
+    dates.forEach((x, i) => { if (i) assert.ok(x >= dates[i - 1], `${where} dates out of order`); });
+  }
+});
+test('trainer rules follow the book and Austrian law', () => {
+  for (let seed = 1; seed <= 200; seed++) {
+    for (const c of [T.makeCase('gwg', seed), T.makeCase('gwg2', seed)]) for (const b of T.caseBookings(c)) {
+      const gwg = b.soll.find(l => l.acc === '7060' || l.acc === '0670' || l.acc === '0672');
+      if (gwg && b.haben.length && !b.haben.some(l => /^06/.test(l.acc))) assert.ok(gwg.amt <= 1000, `GWG over the limit ${gwg.amt}`);
+      if (b.haben.some(l => l.acc === '3190' || l.acc === '3180')) assert.ok(!b.haben.some(l => l.acc === '2800'));
+    }
+    const f = T.makeCase('fahrzeug', seed), pkw = T.caseBookings(f)[0];
+    if (!pkw.soll.some(l => l.acc === '2500')) assert.ok(pkw.soll[0].amt <= 40000, 'Pkw stays below the €40.000 luxury threshold');
+    else assert.ok(pkw.haben[0].amt <= 40000, 'E-Pkw with input VAT only up to €40.000 gross');
+  }
+});
+test('trainer grading: solution accepted in any order, mistakes explained', () => {
+  for (const t of T.TEMPLATES) for (let seed = 1; seed <= 60; seed++) {
+    const c = T.makeCase(t.id, seed);
+    for (const b of T.caseBookings(c)) {
+      const where = `${t.id} ${seed} ${JSON.stringify(b).slice(0, 120)}`, e = entryFrom(b);
+      assert.equal(T.gradeBooking(b, e, c.names).complete, true, where);
+      if (b.none) { assert.equal(T.gradeBooking(b, { ...e, none: false }, c.names).complete, false); continue; }
+      const rev = { ...e, rows: [...e.rows].reverse().map(r => ({ ...r })) };
+      assert.equal(T.gradeBooking(b, rev, c.names).complete, true, `${where} reversed lines`);
+      const swapped = { ...e, rows: e.rows.map(r => ({ sa: r.ha, sb: r.hb, ha: r.sa, hb: r.sb })) };
+      const g = T.gradeBooking(b, swapped, c.names);
+      assert.equal(g.complete, false, where); assert.match(g.msgs.join(), /vertauscht/, where);
+      if (b.effect) assert.equal(T.gradeBooking(b, { ...e, effect: b.effect === 'Ø' ? '↓' : 'Ø' }, c.names).complete, false, where);
+      if (c.allowNone) assert.equal(T.gradeBooking(b, { ...e, none: true }, c.names).complete, false, where);
+    }
+  }
+  const b = { soll: [{ acc: '0400', amt: 33200 }, { acc: '2500', amt: 6640 }], haben: [{ acc: '33084', amt: 39840 }], effect: 'Ø' }, names = { 33084: 'Schmidinger GmbH' };
+  const row = (sa, sb, ha, hb) => ({ sa, sb, ha, hb });
+  let g = T.gradeBooking(b, { rows: [row('0400', '33.200', '3300', '39840'), row('2500 Vorsteuer', '6640,00', '', '')], effect: 'Ø' }, names);
+  assert.equal(g.fields[0].ha, 'bad'); assert.match(g.msgs.join(), /Personenkonto/); assert.equal(g.fields[0].sa, 'ok'); assert.equal(g.fields[1].sb, 'ok');
+  g = T.gradeBooking(b, { rows: [row('Maschinen', '39.840,00', 'schmidinger', '39840'), row('vorsteuer', '6.640', '', '')], effect: 'Ø' }, names);
+  assert.equal(g.fields[0].sa, 'ok'); assert.equal(g.fields[0].sb, 'bad'); assert.match(g.msgs.join(), /Brutto|Netto/); assert.equal(g.fields[0].ha, 'ok');
+  assert.equal(T.resolveAcc('bank'), '2800'); assert.equal(T.resolveAcc('Vorsteuer'), '2500'); assert.equal(T.resolveAcc('0400 Maschinen'), '0400'); assert.equal(T.resolveAcc('xyz'), null);
+  assert.equal(T.searchKonten('04')[0].no, '0400'); assert.equal(T.searchKonten('Schmid', names)[0].no, '33084');
+  const card = { soll: [{ acc: '7060', amt: 582.5 }, { acc: '2500', amt: 116.5 }], haben: [{ acc: '3190', amt: 699 }], effect: '↓' };
+  assert.match(T.gradeBooking(card, { rows: [row('7060', '582,50', '2800', '699'), row('2500', '116,50', '', '')], effect: '↓' }).msgs.join(), /3190/);
+});
+
+test('trainer UI: type a booking, get green fields, finish a case', () => {
+  const a = app();
+  a.click('[data-subject="Rechnungswesen"]');
+  assert.ok(a.$('.tr-promo'));
+  a.click('#nav-rw-trainer'); assert.match(a.text(), /Buchungstrainer\./); assert.equal(a.document.querySelectorAll('.tr-cases .set-card').length, T.TEMPLATES.length);
+  a.click('[data-action="t-open"][data-tpl="kauf"]');
+  const books = [...a.document.querySelectorAll('.tr-book')];
+  assert.ok(books.length >= 8);
+  // Fill the first booking through the fields, the way a learner types it.
+  const first = books[0], typeIn = (sel, v) => { const el = first.querySelector(sel); el.value = v; a.fire(el, 'input'); a.fire(el, 'focusout'); return el; };
+  const accs = [...first.querySelectorAll('.tr-a')], vals = [...first.querySelectorAll('.tr-v')];
+  const soll = a.text().match(/€ ([\d.]+,\d\d) \+ € ([\d.]+,\d\d) USt = € ([\d.]+,\d\d)/);
+  const supplierNo = a.$('.tr-doc').textContent.match(/\((\d{5})\)/)?.[1] || a.$('.tr-intro').textContent.match(/\((\d{5})\)/)[1];
+  const wrong = typeIn('.tr-a[data-k="ha"][data-r="0"]', '3300');
+  assert.ok(wrong.classList.contains('bad')); assert.match(first.querySelector('.tr-msg').textContent, /Personenkonto/);
+  typeIn('.tr-a[data-k="sa"][data-r="0"]', 'masch');
+  assert.equal(accs[0].value, '0400 Maschinen'); assert.ok(accs[0].classList.contains('ok'));
+  typeIn('.tr-v[data-k="sb"][data-r="0"]', soll[1]); assert.ok(vals[0].classList.contains('ok'));
+  typeIn('.tr-a[data-k="sa"][data-r="1"]', '2500'); typeIn('.tr-v[data-k="sb"][data-r="1"]', soll[2].replace(/\./g, ''));
+  typeIn('.tr-a[data-k="ha"][data-r="0"]', supplierNo); typeIn('.tr-v[data-k="hb"][data-r="0"]', soll[3]);
+  assert.equal(first.classList.contains('done'), false, 'effect still missing');
+  a.click(first.querySelector('[data-action="t-effect"][data-v="Ø"]'));
+  assert.equal(first.classList.contains('done'), true);
+  assert.match(a.$('#tr-status').textContent, /^1 von/);
+  // Hints come one at a time, the solution fills in and counts as shown.
+  a.click(books[1].querySelector('[data-action="t-hint"]')); assert.equal(books[1].querySelectorAll('.tr-more li').length, 1);
+  for (const box of books.slice(1)) a.click(box.querySelector('[data-action="t-solve"]'));
+  assert.ok(books[1].classList.contains('shown')); assert.match(books[1].querySelector('.tr-a').value, /^0400/);
+  // The first booking had a wrong try (3300), so nothing counts as right at the first attempt.
+  assert.ok(a.$('.tr-result')); assert.match(a.$('.tr-result').textContent, /0 von \d+ Buchungen auf Anhieb richtig, \d+ mit Lösung/);
+  const st = a.data().rwt.kauf; assert.equal(st.runs, 1); assert.equal(st.perfect, 0); assert.equal(st.best, 0); assert.equal(st.bookings, 1);
+  a.click('.tr-result [data-action="t-new"]'); assert.equal(a.document.querySelectorAll('.tr-book.done').length, 0);
+  // A started case asks before it is left.
+  const box = a.$('.tr-book'); const el = box.querySelector('.tr-a'); el.value = '04'; a.fire(el, 'input');
+  a.click('[data-action="t-exit"]'); assert.equal(a.$('#confirm-dialog').hasAttribute('open'), true); a.click('#confirm-action');
+  assert.match(a.text(), /Fälle/);
+});
+test('trainer UI: "Keine Buchung" in valuation cases', () => {
+  const a = app();
+  a.click('[data-subject="Rechnungswesen"]'); a.click('#nav-rw-trainer'); a.click('[data-action="t-open"][data-tpl="bewertung"]');
+  const books = [...a.document.querySelectorAll('.tr-book')];
+  assert.ok(books.every(b => b.querySelector('.tr-none')));
+  const kauf = books[0]; a.click(kauf.querySelector('.tr-none'));
+  assert.ok(kauf.querySelector('.tr-none').classList.contains('bad'));
+  assert.match(kauf.querySelector('.tr-msg').textContent, /Buchung nötig/);
 });

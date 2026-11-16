@@ -314,6 +314,11 @@
     if (base?.catalogs || other?.catalogs) out.catalogs = mergeCatalogs(base?.catalogs, other?.catalogs);
     if (base?.math || other?.math) out.math = mergeMath(base?.math, other?.math);
     if (base?.rw || other?.rw) out.rw = mergeMath(base?.rw, other?.rw);
+    if (base?.rwt || other?.rwt) {
+      // Trainer stats per case template: every counter keeps its higher value.
+      out.rwt = { ...(other?.rwt || {}) };
+      for (const [id, x] of Object.entries(base?.rwt || {})) { const y = out.rwt[id] || {}; out.rwt[id] = { runs: Math.max(x.runs || 0, y.runs || 0), perfect: Math.max(x.perfect || 0, y.perfect || 0), bookings: Math.max(x.bookings || 0, y.bookings || 0), best: Math.max(x.best || 0, y.best || 0), at: Math.max(x.at || 0, y.at || 0) }; }
+    }
     return out;
   }
   // Maths progress: per topic the newer entry wins, the best test result is kept.
