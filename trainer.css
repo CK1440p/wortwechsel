@@ -224,3 +224,55 @@
   .bl-own-rows dd{margin-bottom:6px}
 }
 @media(prefers-reduced-motion:reduce){.tr-step.in .bl,.tr-step.in .bl-stamp,.tr-step.in .bl-sign svg{animation:none}.bl-sign svg{stroke-dashoffset:0}}
+
+/* Task list like in the book */
+.tr-tasks{display:flex;gap:10px;margin-top:14px;padding:14px 16px;border-radius:16px;background:var(--surface-raised);font-size:14.5px;line-height:1.55;color:var(--text)}
+.tr-tasks>b{flex:none}
+.tr-tasks ol{margin:0;padding-left:22px}
+.tr-tasks ol.single{list-style:none;padding:0}
+.tr-tasks li+li{margin-top:2px}
+.tr-part{display:inline-grid;place-items:center;min-width:26px;height:24px;margin-right:8px;padding:0 6px;border-radius:8px;background:color-mix(in srgb,var(--tr-accent) 15%,var(--surface));color:var(--tr-accent);font:800 13px 'Manrope',system-ui,sans-serif;vertical-align:1px}
+
+/* Depreciation table like the Excel template */
+.tr-afa{max-width:720px}
+.ta-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:8px}
+.ta-head strong{font:800 17px 'Manrope',system-ui,sans-serif;color:var(--text)}
+.ta-head span{font-size:12.5px;font-weight:700;line-height:1.2;text-align:right;color:var(--muted)}
+.ta-grid{display:grid;grid-template-columns:64px minmax(0,1fr) 92px 30px minmax(120px,170px);gap:6px 8px;align-items:center}
+.ta-y{font-size:13px;color:var(--muted)}
+.ta-t{font-size:14px;color:var(--text)}
+b.ta-t{font-weight:800}
+.ta-bw{color:var(--muted)}
+.ta-p{position:relative;display:flex;align-items:center}
+.ta-p .tr-in{padding-right:24px;text-align:right}
+.ta-p i{position:absolute;right:10px;font-style:normal;font-size:13px;color:var(--muted);pointer-events:none}
+.ta-p .tr-in.ok+i{color:#fff}
+.tr-afa .tr-eur{text-align:right;white-space:nowrap}
+.tr-afa .tr-in{height:42px}
+
+/* Valuation table like Ü 1.4 */
+.tv-row{padding-top:4px}
+.tv-group{display:flex;align-items:center;gap:10px;margin:22px 0 8px;padding:10px 14px;border-radius:12px;background:#2f6b45;color:#fff;font:750 15px 'Manrope',system-ui,sans-serif}
+.tv-group span{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:#ffffff26}
+[data-theme="dark"] .tv-group{background:#2c5a3d}
+.tv-line{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:start;padding:10px 4px 4px;border-top:1px dashed var(--border)}
+.tv-text{font-size:15.5px;line-height:1.6;color:var(--text)}
+.tv-per{display:flex;flex-direction:column;align-items:flex-end;font-weight:800;font-size:14px;color:var(--text);white-space:nowrap;font-variant-numeric:tabular-nums}
+.tv-per small{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.tr-val{max-width:420px;margin:8px 0 10px;padding:12px 14px 8px}
+.tv-in{display:grid;grid-template-columns:auto 24px minmax(120px,1fr);gap:8px;align-items:center}
+.tv-in>span:first-child{font-size:13px;font-weight:750;color:var(--muted)}
+.tv-nobook{margin:-4px 0 6px;font-size:12.5px;color:var(--muted)}
+.tr-val.done+.tv-nobook{display:none}
+
+@media(max-width:640px){
+  .ta-grid{grid-template-columns:minmax(0,1fr) 78px 22px 112px;gap:6px}
+  .ta-y{display:none}
+  .ta-t{font-size:13px}
+  .tr-afa .tr-in{padding:0 8px}
+  .tv-line{grid-template-columns:1fr}
+  .tv-per{flex-direction:row;gap:6px;align-items:baseline;justify-content:flex-start}
+  .tr-val{max-width:none}
+  .tr-tasks{flex-direction:column;gap:4px}
+}
+.tr-afa .ta-p .tr-in{padding-right:28px}

@@ -28,11 +28,32 @@
     function open(id, seed = Math.floor(Math.random() * 2 ** 31)) {
       leave();
       const c = T.makeCase(id, seed), entries = [];
-      c.steps.forEach((s, si) => (s.bookings || []).forEach((b, bi) => entries.push({ si, bi, b, rows: Array.from({ length: rowsOf(b) }, () => ({ sa: '', sb: '', ha: '', hb: '' })), effect: null, none: false, state: 'open', wrong: false, helped: false, hints: 0 })));
+      const base = { effect: null, none: false, state: 'open', wrong: false, helped: false, hints: 0, vals: {} };
+      for (const x of T.caseEntries(c)) entries.push(x.kind === 'book' ? { ...base, ...x, rows: Array.from({ length: rowsOf(x.b) }, () => ({ sa: '', sb: '', ha: '', hb: '' })) } : { ...base, ...x, vals: {} });
       cur = { c, entries, touched: false, finished: false, started: Date.now() };
       draw();
     }
     const rowsOf = b => Math.max(b.soll.length, b.haben.length, 1);
+    const helpOf = e => e.kind === 'book' ? [...e.b.hint, ...e.b.calc] : [...(e.spec.hint || []), ...(e.spec.calc || [])];
+    const tools = () => `<div class="tr-tools"><button type="button" class="text-button" data-action="t-hint">${icon('spark')}Tipp</button><button type="button" class="text-button" data-action="t-solve">Lösung</button></div>`;
+    const badges = () => `<span class="tr-badge" aria-hidden="true">${icon('check')}</span><span class="tr-burst" aria-hidden="true"></span>`;
+    const numIn = (k, cls = 'tr-v', label = '') => `<input type="text" class="tr-in ${cls}" data-k="${k}" inputmode="decimal" autocomplete="off" enterkeyhint="next" aria-label="${esc(label)}">`;
+    // Depreciation table laid out like the book's Excel template.
+    function afaHtml(e, ei) {
+      const sp = e.spec, last = sp.rows.length - 1;
+      return `<div class="tr-book tr-afa" data-e="${ei}">${badges()}
+        <div class="ta-head"><strong>${esc(sp.label)}</strong><span>Lineare<br>Abschreibung</span></div>
+        <div class="ta-grid">
+          <span class="ta-y"></span><span class="ta-t">Anschaffungswert ${sp.rows[0].year}</span><span class="ta-p"></span><span class="tr-eur">€</span>${numIn('aw', 'tr-v', `Anschaffungswert ${sp.label}`)}
+          ${sp.rows.map((row, i) => `<span class="ta-y">${i + 1}. Jahr</span><b class="ta-t">Abschreibung ${row.year}</b><span class="ta-p">${numIn(`p${i}`, 'tr-p', `Abschreibungssatz ${row.year} in Prozent`)}<i>%</i></span><span class="tr-eur">−&nbsp;€</span>${numIn(`a${i}`, 'tr-v', `Abschreibung ${row.year}`)}
+          <span class="ta-y"></span><span class="ta-t ta-bw">Buchwert ${i === last && sp.endOfLife ? `31.12.${row.year}` : `1.1.${row.year + 1}`}</span><span class="ta-p"></span><span class="tr-eur">€</span>${numIn(`b${i}`, 'tr-v', `Buchwert nach ${row.year}`)}`).join('')}
+        </div>
+        <div class="tr-foot"><p class="tr-msg" role="status"></p>${tools()}</div><div class="tr-more" hidden></div></div>`;
+    }
+    function valHtml(e, ei) {
+      return `<div class="tr-book tr-val" data-e="${ei}">${badges()}<div class="tv-in"><span>Wertansatz</span><span class="tr-eur">€</span>${numIn('v', 'tr-v', 'Wertansatz in Euro')}</div><div class="tr-foot"><p class="tr-msg" role="status"></p>${tools()}</div><div class="tr-more" hidden></div></div>`;
+    }
+    const entryHtml = (e, ei) => e.kind === 'afa' ? afaHtml(e, ei) : e.kind === 'val' ? valHtml(e, ei) : bookingHtml(e, ei);
     const entryOf = el => { const box = el.closest('.tr-book'); return box && cur ? cur.entries[Number(box.dataset.e)] : null; };
     const tableHtml = t => t ? `<div class="m-table-wrap"><table class="m-table rows"><tbody>${t.rows.map((r, i) => `<tr>${r.map(c => i === 0 ? `<th>${esc(c)}</th>` : `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '';
     function lineHtml(side, r, first) {
@@ -100,10 +121,17 @@
     }
     const stepHead = s => s.date ? `<b>${esc(s.date)}${s.beleg ? `&nbsp;&nbsp;${esc(s.beleg)}` : ''}</b> ` : '';
     function stepHtml(s, si, ei) {
+      const mine = () => { const out = []; while (ei.n < cur.entries.length && cur.entries[ei.n].si === si) { out.push(entryHtml(cur.entries[ei.n], ei.n)); ei.n++; } return out.join(''); };
+      if (cur.c.layout === 'table') {
+        const head = s.groupTitle ? `<div class="tv-group"><span>${s.group}.</span>${esc(s.groupTitle)}</div>` : '';
+        const books = (s.bookings || []).length;
+        return `<li class="tr-step tv-row" data-step="${si}" hidden>${head}<div class="tv-line"><p class="tv-text">${rich(s.text)}</p><span class="tv-per"><small>per</small>${esc(s.per)}</span></div>${mine().replace('<div class="tr-book tr-val"', `<div class="tr-book tr-val${books ? '' : ' tv-solo'}"`)}${books ? '' : '<p class="tv-nobook">Hier ist nur der Wertansatz gefragt.</p>'}</li>`;
+      }
+      const chip = s.part ? `<span class="tr-part">${s.part})</span>` : '';
       const body = s.info
         ? `<div class="tr-info">${icon('book')}<div><p>${rich(s.info)}</p>${s.calc?.length ? `<details class="tr-calc"><summary>Nebenrechnung zeigen</summary>${s.calc.map(x => `<p>${rich(x)}</p>`).join('')}</details>` : ''}</div></div>`
-        : s.asDoc && s.doc ? `<p class="tr-doc">${stepHead(s)}${rich(s.lead)}</p>${docHtml(s.doc, s.beleg)}` : `<p class="tr-doc">${stepHead(s)}${s.text ? rich(s.text) : ''}</p>`;
-      return `<li class="tr-step${s.info ? ' tr-step-info' : ''}${s.asDoc ? ' has-doc' : ''}" data-step="${si}" hidden>${body}${tableHtml(s.table)}${(s.bookings || []).map(() => bookingHtml(cur.entries[ei.n], ei.n++)).join('')}</li>`;
+        : s.asDoc && s.doc ? `<p class="tr-doc">${chip}${stepHead(s)}${rich(s.lead)}</p>${docHtml(s.doc, s.beleg)}` : `<p class="tr-doc">${chip}${stepHead(s)}${s.text ? rich(s.text) : ''}</p>`;
+      return `<li class="tr-step${s.info ? ' tr-step-info' : ''}${s.asDoc ? ' has-doc' : ''}${s.afa ? ' has-afa' : ''}" data-step="${si}" hidden>${body}${tableHtml(s.table)}${mine()}</li>`;
     }
     function draw() {
       const c = cur.c;
@@ -111,7 +139,7 @@
       const counter = { n: 0 };
       $('#main').innerHTML = `<section class="tr-case">
         <div class="qa-test-bar tr-bar"><button class="back-link" data-action="t-exit">${icon('back')}Trainer</button><div class="qa-test-title"><strong>${esc(c.company)}</strong><small id="tr-status"></small></div><div class="tr-meter" aria-hidden="true"><span id="tr-meter"></span></div><button class="icon-button" data-action="t-new" aria-label="Neuer Fall" title="Neuer Fall mit neuen Zahlen">${icon('swap')}</button></div>
-        <header class="tr-head"><div class="eyebrow">BUCHUNGSTRAINER · ${esc(c.sub.toUpperCase())}</div><h1>${esc(c.title)}</h1><p class="tr-intro">${rich(c.intro)}</p></header>
+        <header class="tr-head"><div class="eyebrow">BUCHUNGSTRAINER · ${esc(c.sub.toUpperCase())}</div><h1>${esc(c.title)}</h1><p class="tr-intro">${rich(c.intro)}</p>${c.tasks ? `<div class="tr-tasks"><b>Aufgabe:</b><ol${c.tasks.length > 1 ? ' type="a"' : ' class="single"'}>${c.tasks.map(t => `<li>${rich(t)}</li>`).join('')}</ol></div>` : ''}</header>
         <ol class="tr-steps">${c.steps.map((s, si) => stepHtml(s, si, counter)).join('')}</ol>
         <div class="tr-next" id="tr-next" aria-live="polite"></div>
         <div class="tr-actions"><button class="button primary" data-action="t-new">Neuer Fall ${icon('arrow')}</button></div></section>`;
@@ -125,7 +153,8 @@
       if (!cur) return;
       const steps = cur.c.steps, before = cur.shown;
       let k = 0;
-      while (k < steps.length) { if ((steps[k].bookings || []).length && !stepDone(k)) break; k++; }
+      const hasWork = i => cur.entries.some(e => e.si === i);
+      while (k < steps.length) { if (hasWork(k) && !stepDone(k)) break; k++; }
       // Info boxes come together with the next document that needs a booking.
       const upto = Math.min(steps.length - 1, k);
       if (upto <= before) return;
@@ -134,8 +163,8 @@
       for (let i = before + 1; i <= upto; i++) { const li = document.querySelector(`.tr-step[data-step="${i}"]`); if (!li) continue; li.hidden = false; fresh.push(li); }
       const go = () => fresh.forEach((li, n) => { li.style.setProperty('--d', `${n * 90}ms`); li.classList.add('in'); });
       if (reduced()) go(); else requestAnimationFrame(() => requestAnimationFrame(go));
-      const left = steps.slice(upto + 1).filter(s => (s.bookings || []).length).length, next = document.querySelector('#tr-next');
-      if (next) next.innerHTML = left ? `<span>${icon('lock')}</span><p>Noch ${left} ${left === 1 ? 'Beleg' : 'Belege'}. Der nächste erscheint, wenn diese Buchung stimmt.</p>` : '';
+      const left = steps.slice(upto + 1).filter((s, i) => hasWork(upto + 1 + i)).length, next = document.querySelector('#tr-next'), table = cur.c.layout === 'table';
+      if (next) next.innerHTML = left ? `<span>${icon('lock')}</span><p>Noch ${left} ${table ? (left === 1 ? 'Zeile' : 'Zeilen') : left === 1 ? 'Schritt' : 'Schritte'}. ${table ? 'Die nächste Zeile erscheint, wenn diese stimmt.' : 'Der nächste erscheint, wenn dieser stimmt.'}</p>` : '';
       if (move && fresh.length) {
         const target = fresh.find(li => li.querySelector('.tr-book')) || fresh[0];
         setTimeout(() => { target.scrollIntoView?.({ block: 'start', behavior: reduced() ? 'auto' : 'smooth' }); if (fine()) target.querySelector('.tr-book:not(.done):not(.shown) .tr-in')?.focus({ preventScroll: true }); }, reduced() ? 0 : 420);
@@ -145,13 +174,14 @@
       if (!cur) return;
       const all = cur.entries.length, ok = cur.entries.filter(e => e.state === 'ok').length, shown = cur.entries.filter(e => e.state === 'shown').length;
       const status = document.querySelector('#tr-status'), meter = document.querySelector('#tr-meter');
-      if (status) status.textContent = `${ok + shown} von ${all} Buchungen${shown ? ` · ${shown} mit Lösung` : ''}`;
+      if (status) status.textContent = `${ok + shown} von ${all} erledigt${shown ? ` · ${shown} mit Lösung` : ''}`;
       if (meter) meter.style.width = `${Math.round((ok + shown) / all * 100)}%`;
       if (ok + shown === all && !cur.finished) finish();
     }
 
     // ---- Fields ----
-    const fieldEl = (box, k, r) => box.querySelector(`.tr-in[data-k="${k}"][data-r="${r}"]`);
+    const fieldEl = (box, k, r) => box.querySelector(r === undefined ? `.tr-in[data-k="${k}"]` : `.tr-in[data-k="${k}"][data-r="${r}"]`);
+    const store = (e, el) => { if (e.kind === 'book') e.rows[Number(el.dataset.r)][el.dataset.k] = el.value; else e.vals[el.dataset.k] = el.value; };
     function setField(el, state) {
       const was = el.classList.contains('ok') ? 'ok' : el.classList.contains('bad') ? 'bad' : '';
       if (was === state) return;
@@ -163,6 +193,15 @@
     function grade(box, { settle = true } = {}) {
       const e = cur.entries[Number(box.dataset.e)];
       if (!e || e.state !== 'open') return;
+      if (e.kind !== 'book') {
+        const g = e.kind === 'afa' ? T.gradeAfa(e.spec, e.vals) : T.gradeVal(e.spec, e.vals);
+        let bad = false;
+        for (const [k, st] of Object.entries(g.fields)) { const el = fieldEl(box, k); if (!el) continue; const state = st === 'bad' && !settle && document.activeElement === el ? '' : st; setField(el, state); if (state === 'bad') bad = true; }
+        box.querySelector('.tr-msg').textContent = g.msgs[0] || '';
+        if (bad) e.wrong = true;
+        if (g.complete) solved(box, e);
+        return;
+      }
       const g = T.gradeBooking(e.b, e, cur.c.names);
       let bad = false;
       g.fields.forEach((f, r) => { for (const k of ['sa', 'sb', 'ha', 'hb']) { const el = fieldEl(box, k, r); if (!el) continue; const state = f[k] === 'bad' && !settle && document.activeElement === el ? '' : f[k]; setField(el, state); if (state === 'bad') bad = true; } });
@@ -193,7 +232,14 @@
       if (sameStep) { if (fine()) sameStep.querySelector('.tr-in')?.focus({ preventScroll: true }); return; }
       unlock();
     }
+    const pct = v => `${String(Math.round(v * 100) / 100).replace('.', ',')}`;
     function fill(box, e) {
+      if (e.kind !== 'book') {
+        const put = (k, v) => { const el = fieldEl(box, k); if (el) { el.value = v; e.vals[k] = v; } };
+        if (e.kind === 'val') put('v', eur(e.spec.value));
+        else { put('aw', eur(e.spec.aw)); e.spec.rows.forEach((row, i) => { put(`p${i}`, pct(e.spec.rate)); put(`a${i}`, eur(row.afa)); put(`b${i}`, eur(row.bw)); }); }
+        return;
+      }
       const b = e.b, names = cur.c.names;
       const put = (k, r, v) => { const el = fieldEl(box, k, r); if (el) { el.value = v; e.rows[r][k] = v; } };
       if (b.none) e.none = true;
@@ -208,16 +254,16 @@
       fill(box, e); e.state = 'shown'; cur.touched = true;
       box.querySelectorAll('.tr-in').forEach(el => el.classList.remove('ok', 'bad'));
       box.classList.add('shown'); lock(box);
-      box.querySelector('.tr-msg').textContent = e.b.none ? 'Hier ist keine Buchung nötig.' : '';
-      const more = box.querySelector('.tr-more'), lines = [...e.b.hint, ...e.b.calc];
+      box.querySelector('.tr-msg').textContent = e.kind === 'book' && e.b.none ? 'Hier ist keine Buchung nötig.' : '';
+      const more = box.querySelector('.tr-more'), lines = helpOf(e);
       more.hidden = !lines.length; more.innerHTML = lines.length ? `<ul>${lines.map(x => `<li>${rich(x)}</li>`).join('')}</ul>` : '';
       progress();
       unlock();
     }
     function hint(box, btn) {
       const e = entryOf(box); if (!e || e.state !== 'open') return;
-      const all = [...e.b.hint, ...e.b.calc];
-      if (!all.length) { box.querySelector('.tr-msg').textContent = 'Lies den Beleg noch einmal genau: Was kommt ins Soll, was ins Haben?'; return; }
+      const all = helpOf(e);
+      if (!all.length) { box.querySelector('.tr-msg').textContent = e.kind === 'book' ? 'Lies den Beleg noch einmal genau: Was kommt ins Soll, was ins Haben?' : 'Lies den Sachverhalt noch einmal genau.'; return; }
       e.hints = Math.min(all.length, e.hints + 1); e.helped = true;
       const more = box.querySelector('.tr-more');
       more.hidden = false; more.innerHTML = `<ul>${all.slice(0, e.hints).map(x => `<li>${rich(x)}</li>`).join('')}</ul>`;
@@ -230,7 +276,7 @@
       st[id] = { runs: old.runs + 1, perfect: old.perfect + (first === all ? 1 : 0), bookings: old.bookings + ok, best: Math.max(old.best, pct), at: Date.now() };
       save();
       const mins = Math.max(1, Math.round((Date.now() - cur.started) / 60000));
-      document.querySelector('#main').insertAdjacentHTML('beforeend', `<section class="result-page qa-test-result tr-result"><div class="qa-score-ring">${ring(pct, 'auf Anhieb')}</div><h1>${pct === 100 ? 'Alles auf Anhieb' : pct >= 70 ? 'Stark gebucht' : 'Fall gelöst'}<span class="blue-dot">.</span></h1><p>${first} von ${all} Buchungen auf Anhieb richtig${shown ? `, ${shown} mit Lösung` : ''} · ${mins} ${mins === 1 ? 'Minute' : 'Minuten'}</p><div class="result-actions"><button class="button primary" data-action="t-new">Neuer Fall ${icon('arrow')}</button><button class="button secondary" data-action="t-home">Andere Fälle</button></div></section>`);
+      document.querySelector('#main').insertAdjacentHTML('beforeend', `<section class="result-page qa-test-result tr-result"><div class="qa-score-ring">${ring(pct, 'auf Anhieb')}</div><h1>${pct === 100 ? 'Alles auf Anhieb' : pct >= 70 ? 'Stark gebucht' : 'Fall gelöst'}<span class="blue-dot">.</span></h1><p>${first} von ${all} Aufgaben auf Anhieb richtig${shown ? `, ${shown} mit Lösung` : ''} · ${mins} ${mins === 1 ? 'Minute' : 'Minuten'}</p><div class="result-actions"><button class="button primary" data-action="t-new">Neuer Fall ${icon('arrow')}</button><button class="button secondary" data-action="t-home">Andere Fälle</button></div></section>`);
       setTimeout(() => document.querySelector('.tr-result')?.scrollIntoView?.({ block: 'center', behavior: reduced() ? 'auto' : 'smooth' }), 350);
     }
 
@@ -257,16 +303,16 @@
         if (no && (T.kontoName(no, cur.c.names))) input.value = T.kontoLabel(no, cur.c.names);
       } else {
         const v = T.parseAmount(input.value);
-        if (v !== null && input.value.trim()) input.value = eur(v);
+        if (v !== null && input.value.trim()) input.value = input.classList.contains('tr-p') ? pct(v) : eur(v);
       }
-      e.rows[Number(input.dataset.r)][input.dataset.k] = input.value;
+      store(e, input);
       grade(input.closest('.tr-book'));
     }
     // One set of listeners for the whole app; they only act while a case is open.
     document.addEventListener('input', ev => {
       const el = ev.target; if (!cur || !el.classList?.contains('tr-in')) return;
       const e = entryOf(el); if (!e || e.state !== 'open') return;
-      e.rows[Number(el.dataset.r)][el.dataset.k] = el.value; cur.touched = true;
+      store(e, el); cur.touched = true;
       el.classList.remove('ok', 'bad');
       if (el.classList.contains('tr-a')) suggest(el);
     });

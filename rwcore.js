@@ -679,6 +679,43 @@
     if (sol.effect) { effect = !entry.effect ? '' : entry.effect === sol.effect ? 'ok' : 'bad'; if (effect !== 'ok') complete = false; if (effect === 'bad') msgs.push('Die Auswirkung auf das Eigenkapital stimmt nicht.'); }
     return { fields: out, effect, none: '', complete, msgs: [...new Set(msgs)] };
   }
+  // ---- Depreciation table (like the book's Excel template) and valuation amounts ----
+  // Field keys: aw, p0/a0/b0, p1/a1/b1 ... (rate, depreciation, book value after that year).
+  function afaSpec(label, aw, nd, month, years, o = {}) {
+    const plan = afaPlan(aw, nd, month, { keepEuro: !!o.keepEuro });
+    const n = Math.min(years, plan.rows.length);
+    return { label, aw: r2(aw), nd, rate: r2(100 / nd), half: plan.half, annual: plan.annual, rows: plan.rows.slice(0, n), endOfLife: n === plan.rows.length, start: o.start || '', awTraps: o.awTraps || [], hint: o.hint || [], calc: o.calc || [] };
+  }
+  function gradeAfa(spec, vals) {
+    const out = {}, msgs = [];
+    let complete = true;
+    const check = (key, want, traps = []) => {
+      const raw = String(vals[key] ?? '').trim();
+      if (!raw) { out[key] = ''; complete = false; return; }
+      const v = parseAmount(raw);
+      if (v !== null && Math.abs(v - want) < 0.005) { out[key] = 'ok'; return; }
+      out[key] = 'bad'; complete = false;
+      const t = v === null ? null : traps.find(x => Math.abs(x.value - v) < 0.005 && Math.abs(x.value - want) >= 0.005);
+      if (t) msgs.push(t.msg); else if (v === null) msgs.push(`„${raw}“ ist keine Zahl.`);
+    };
+    check('aw', spec.aw, spec.awTraps);
+    spec.rows.forEach((row, i) => {
+      check(`p${i}`, spec.rate, [{ value: spec.nd, msg: 'Abschreibungssatz = 100 : Nutzungsdauer.' }]);
+      const halfRow = spec.half && (i === 0 || (spec.endOfLife && i === spec.rows.length - 1));
+      check(`a${i}`, row.afa, halfRow ? [{ value: spec.annual, msg: 'Halbjahresregel: Inbetriebnahme in der zweiten Jahreshälfte, also nur die halbe Jahresabschreibung.' }] : i === 0 ? [{ value: r2(spec.annual / 2), msg: 'Inbetriebnahme in der ersten Jahreshälfte: die ganze Jahresabschreibung.' }] : [{ value: r2(spec.annual / 2), msg: 'Nur im ersten (und letzten) Jahr gibt es die halbe Abschreibung.' }]);
+      check(`b${i}`, row.bw, [{ value: r2(spec.aw - row.afa), msg: 'Buchwert = Buchwert davor minus Abschreibung dieses Jahres.' }]);
+    });
+    return { fields: out, complete, msgs: [...new Set(msgs)] };
+  }
+  function gradeVal(spec, vals) {
+    const raw = String(vals.v ?? '').trim();
+    if (!raw) return { fields: { v: '' }, complete: false, msgs: [] };
+    const v = parseAmount(raw);
+    if (v !== null && Math.abs(v - spec.value) < 0.005) return { fields: { v: 'ok' }, complete: true, msgs: [] };
+    const t = v === null ? null : spec.traps.find(x => Math.abs(x.value - v) < 0.005);
+    return { fields: { v: 'bad' }, complete: false, msgs: t ? [t.msg] : v === null ? [`„${raw}“ ist kein Betrag.`] : [] };
+  }
+
   // ---- Case building blocks ----
   const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   const d = (day, month, year = 2025) => `${day}.${month}.${year}`;
@@ -769,7 +806,7 @@
     const A = sup('machine'), B = sup('montage'), C = sup('bau');
     const rab = r.pick([0, 0, 5, 10]), LP = net100(r, 18000, 90000), N = r2(LP * (1 - rab / 100));
     const hours = r.int(6, 22), rate = r.pick([68, 72, 78, 85, 92]), mat = net10(r, 120, 900), M2 = hours * rate + mat;
-    const K = r.int(600, 2400), G = grossOf(K), nd = r.pick([5, 6, 8, 10]), keep = r.chance(0.7);
+    const K = r.int(600, 2400), G = grossOf(K), nd = r.pick([4, 5, 6]), keep = r.chance(0.7);
     const inv = [r.int(3, 26), r.int(1, 4)], inb = dateAfter(r, inv, 5, 20), mont = inb, maur = dateAfter(r, inb, 1, 6), payA = dateAfter(r, maur, 3, 12), payB = dateAfter(r, payA, 2, 9);
     const eA = nr.E(), eB = nr.E(), eC = nr.E(), pct = r.pick([2, 3]), sk = skontoBookings(A.no, grossOf(N), pct, acc), aw = r2(N + M2 + K - sk.skN), plan = afaPlan(aw, nd, inb[1], { keepEuro: keep }), last = plan.rows.at(-1);
     const years = [plan.rows[0], plan.rows[2], last].filter((x, i, a) => x && a.indexOf(x) === i);
@@ -782,11 +819,13 @@
       { date: d(...maur), beleg: eC, text: `Rechnung der ${C.name} (${C.no}) über Maurerarbeiten von ${E(G)} (inkl. 20 % USt), die für die Aufstellung nötig waren.`, lead: `${supLead('Eingangsrechnung', C)} Die Arbeiten waren für die Aufstellung der Anlage nötig.`, doc: dC, bookings: [invoice(acc, K, C.no, { hint: [`Netto = ${E(G)} : 1,2 = ${E(K)}.`, 'Auch diese Kosten sind nötig, um die Anlage betriebsbereit zu machen.'], calc: [`${E(G)} : 1,2 = ${E(K)}, Vorsteuer ${E(G - K)}`] })] },
       { date: d(...payA), beleg: nr.B(), text: `Überweisung von ${E(sk.pay)} an ${A.name} zum Ausgleich der ${eA} abzüglich ${pct} % Skonto.`, lead: `Kontoauszug: Ausgleich der ${eA}.`, doc: bankDoc(r, me, payA, [{ text: `Überweisung ${A.name}`, ref: `Re-Nr. ${dA.no} abzgl. ${pct} % Skonto`, amount: -sk.pay }], nr), bookings: sk.list },
       { date: d(...payB), beleg: nr.B(), text: `Ausgleich der ${eB} der ${B.name} durch Banküberweisung.`, lead: `Kontoauszug: Ausgleich der ${eB}.`, doc: bankDoc(r, me, payB, [{ text: `Überweisung ${B.name}`, ref: `Re-Nr. ${dB.no}`, amount: -grossOf(M2) }], nr), bookings: [bk([[B.no, grossOf(M2)]], [['2800', grossOf(M2)]], { effect: 'Ø' })] },
-      { info: `Die Nutzungsdauer der Anlage beträgt ${nd} Jahre, lineare Abschreibung. ${keep ? `Am Ende der Nutzungsdauer ist die Anlage weiterhin gebrauchsfähig: Abschreibung auf den Erinnerungseuro. Sie scheidet Ende ${last.year + 1} aus.` : 'Sie scheidet am Ende der Nutzungsdauer aus dem Betrieb aus.'}`, calc: [`Anschaffungswert: ${E(N)} + ${E(M2)} + ${E(K)} − ${E(sk.skN)} = ${E(aw)}`] },
+      { info: `Die Nutzungsdauer der Anlage beträgt ${nd} Jahre, lineare Abschreibung. ${keep ? `Am Ende der Nutzungsdauer ist die Anlage weiterhin gebrauchsfähig: Abschreibung auf den Erinnerungseuro. Sie scheidet Ende ${last.year + 1} aus.` : 'Sie scheidet am Ende der Nutzungsdauer aus dem Betrieb aus.'}` },
+      { part: 'b', text: 'Berechne den Anschaffungswert, die Abschreibungsbeträge (lineare Abschreibung) und die Buchwerte. Erfasse die Werte in der Tabelle.', afa: afaSpec(mShort, aw, nd, inb[1], plan.rows.length, { keepEuro: keep, awTraps: [{ value: N + M2 + K, msg: 'Der Skonto mindert den Anschaffungswert.' }, { value: grossOf(aw), msg: 'Ohne Vorsteuer.' }, { value: N, msg: 'Installation und Maurerarbeiten gehören auch zum Anschaffungswert.' }], hint: ['Anschaffungswert = Kaufpreis + Installation + Maurerarbeiten − Skonto, alles netto.', `Abschreibungssatz = 100 : ${nd}.`], calc: [`Anschaffungswert: ${E(N)} + ${E(M2)} + ${E(K)} − ${E(sk.skN)} = ${E(aw)}`, ...afaCalc(aw, nd, plan, d(...inb))] }) },
       ...years.map((row, i) => ({ date: `31.12.${row.year}`, bookings: [afaBooking(acc, row, { hint: i === 0 ? [`Anschaffungswert = Kaufpreis + Installation + Maurerarbeiten − Skonto (alles netto) = ${E(aw)}.`, `Jahresabschreibung ${E(plan.annual)}.`] : row === last ? [keep ? 'Im letzten Jahr bleibt € 1,– als Erinnerungswert stehen.' : 'Im letzten Jahr wird der Rest-Buchwert abgeschrieben.'] : [`Jahresabschreibung ${E(plan.annual)}.`], calc: i === 0 ? afaCalc(aw, nd, plan, d(...inb)) : [`Buchwert davor ${E(row.bw + row.afa)}, Abschreibung ${E(row.afa)}`] })] })),
       ...(keep ? [{ date: `31.12.${last.year + 1}`, text: 'Die Anlage scheidet aus dem Betrieb aus.', bookings: [bk([['7010', 1]], [[acc, 1]], { effect: '↓', hint: ['Jetzt wird der Erinnerungseuro abgeschrieben.'] })] }] : []),
     ];
-    return { title: 'Anlagenkauf verbuchen, Abschreibung berechnen und verbuchen, Erfolgsauswirkung', company, intro: `${company} bestellt ${mName} bei ${A.name} (${A.no}).`, names, steps };
+    steps.forEach(x => { if (!x.part && x.bookings) x.part = x.date?.startsWith('31.12') ? 'c' : 'a'; });
+    return { title: 'Anlagenkauf verbuchen, Abschreibung berechnen und verbuchen, Erfolgsauswirkung', company, intro: `${company} bestellt ${mName} bei ${A.name} (${A.no}).`, names, steps, tasks: ['Verbuche die laufenden Geschäftsfälle.', 'Berechne den Anschaffungswert sowie die Abschreibungsbeträge (lineare Abschreibung) und Buchwerte. Erfasse die Werte in der Tabelle.', `Verbuche die Abschreibungen für ${years.map(x => x.year).join(', ')}${keep ? ` und ${last.year + 1}` : ''}.`, 'Gib an, ob sich durch den jeweiligen Geschäftsfall das Eigenkapital vermehrt (↑), vermindert (↓) oder ob es sich um eine erfolgsneutrale Buchung (Ø) handelt.'] };
   });
 
   tpl('zwei', 'Zwei Anlagenkäufe in einem Geschäftsjahr', 'Ausstattung und Maschine mit Transport, Skonto und drei Jahren Abschreibung', 'av', r => {
@@ -803,14 +842,16 @@
     const docT = invDoc(r, T.p, me, { date: dT, delivery: inb2, items: [{ text: 'Transport', sub: `${mShort}, Zustellung frei Haus`, total: tr }], terms: 'Zahlbar innerhalb von 10 Tagen ohne Abzug.' });
     return {
       title: 'Anlagenkauf verbuchen, Abschreibung berechnen und verbuchen, Erfolgsauswirkung', company, intro: `${company} kauft im Jahr 2025 unter anderem folgende Anlagegegenstände:`, names,
+      tasks: ['Verbuche die laufenden Geschäftsfälle.', 'Berechne die Anschaffungswerte, die Abschreibungsbeträge (lineare Abschreibung) und die Buchwerte für die ersten drei Jahre der Nutzung.', 'Verbuche die Abschreibungen der ersten drei Jahre.', 'Gib an, ob sich durch den jeweiligen Geschäftsfall das Eigenkapital vermehrt (↑), vermindert (↓) oder ob es sich um eine erfolgsneutrale Buchung (Ø) handelt.'],
       steps: [
         { date: d(...d1), beleg: e1, text: `Kauf ${bName} bei ${S1.name} (${S1.no}) um ${E(n1)} + ${E(vatOf(n1))} USt = ${E(grossOf(n1))}, sofortige Inbetriebnahme, Nutzungsdauer ${nd1} Jahre, Abschreibung auf den Erinnerungseuro. Zahlung zehn Tage ohne Abzug.`, lead: `${supLead('Eingangsrechnung', S1)} Sofortige Inbetriebnahme, Nutzungsdauer ${nd1} Jahre.`, doc: doc1, bookings: [invoice('0600', n1, S1.no)] },
         { date: d(...pay1), beleg: nr.B(), text: `Überweisung von ${E(grossOf(n1))} an ${S1.name} zum Ausgleich der ${e1}.`, lead: `Kontoauszug: Ausgleich der ${e1}.`, doc: bankDoc(r, me, pay1, [{ text: `Überweisung ${S1.name}`, ref: `Re-Nr. ${doc1.no}`, amount: -grossOf(n1) }], nr), bookings: [bk([[S1.no, grossOf(n1)]], [['2800', grossOf(n1)]], { effect: 'Ø' })] },
         { date: d(...d2), beleg: e2, text: `Kauf ${mName} bei ${S2.name} (${S2.no}) um ${E(n2)} + ${E(vatOf(n2))} USt = ${E(grossOf(n2))}; Inbetriebnahme am ${d(...inb2)}, Nutzungsdauer ${nd2} Jahre.`, lead: `${supLead('Eingangsrechnung', S2)} Inbetriebnahme am ${d(...inb2)}, Nutzungsdauer ${nd2} Jahre.`, doc: doc2, bookings: [invoice('0400', n2, S2.no)] },
         { date: d(...dT), beleg: eT, text: `${T.name} (${T.no}) stellt den Transport ${E(tr)} + ${E(vatOf(tr))} USt = ${E(grossOf(tr))} in Rechnung, zahlbar in zehn Tagen ohne Abzug.`, lead: supLead('Eingangsrechnung', T), doc: docT, bookings: [invoice('0400', tr, T.no, { hint: ['Transportkosten sind Nebenkosten der Anschaffung: Anlagenkonto, nicht Aufwand.'] })] },
         { date: d(...pay2), beleg: nr.B(), text: `Überweisung von ${E(sk.pay)} (${E(grossOf(n2))} − ${pct} % Skonto) an ${S2.name}.`, lead: `Kontoauszug: Ausgleich der ${e2}.`, doc: bankDoc(r, me, pay2, [{ text: `Überweisung ${S2.name}`, ref: `Re-Nr. ${doc2.no} abzgl. ${pct} % Skonto`, amount: -sk.pay }], nr), bookings: sk.list },
-        { info: `${bShort}: Anschaffungswert ${E(aw1)}. ${mShort}: Anschaffungswert = Kaufpreis + Transport − Skonto.`, calc: [`${mShort}: ${E(n2)} + ${E(tr)} − ${E(sk.skN)} = ${E(aw2)}`] },
-        ...[0, 1, 2].map(i => ({ date: `31.12.${2025 + i}`, bookings: [afaBooking('0600', p1.rows[i], { label: bShort, calc: i === 0 ? afaCalc(aw1, nd1, p1, d(...d1)) : [] }), afaBooking('0400', p2.rows[i], { label: mShort, calc: i === 0 ? afaCalc(aw2, nd2, p2, d(...inb2)) : [] })] })),
+        { part: 'b', text: `Berechne die Abschreibungsbeträge (lineare Abschreibung) und die Buchwerte für ${bShort === 'Besprechungstisch mit 6 Stühlen' ? 'den Besprechungstisch' : `„${bShort}“`} für die ersten drei Jahre der Nutzung.`, afa: afaSpec(bShort, aw1, nd1, d1[1], 3, { awTraps: [{ value: grossOf(aw1), msg: 'Ohne Vorsteuer.' }], hint: [`Abschreibungssatz = 100 : ${nd1}.`], calc: afaCalc(aw1, nd1, p1, d(...d1)) }) },
+        { part: 'b', text: `Berechne den Anschaffungswert, die Abschreibungsbeträge und die Buchwerte für „${mShort}“ für die ersten drei Jahre.`, afa: afaSpec(mShort, aw2, nd2, inb2[1], 3, { awTraps: [{ value: n2 + tr, msg: 'Der Skonto mindert den Anschaffungswert.' }, { value: n2 - sk.skN, msg: 'Der Transport gehört zum Anschaffungswert.' }, { value: grossOf(aw2), msg: 'Ohne Vorsteuer.' }], hint: ['Anschaffungswert = Kaufpreis + Transport − Skonto (netto).'], calc: [`${mShort}: ${E(n2)} + ${E(tr)} − ${E(sk.skN)} = ${E(aw2)}`, ...afaCalc(aw2, nd2, p2, d(...inb2))] }) },
+        ...[0, 1, 2].map(i => ({ part: 'c', date: `31.12.${2025 + i}`, bookings: [afaBooking('0600', p1.rows[i], { label: bShort, calc: i === 0 ? afaCalc(aw1, nd1, p1, d(...d1)) : [] }), afaBooking('0400', p2.rows[i], { label: mShort, calc: i === 0 ? afaCalc(aw2, nd2, p2, d(...inb2)) : [] })] })),
       ],
     };
   });
@@ -842,8 +883,14 @@
       rows.push(['0640', 'Lkw', pL, n, d(...dL), nd]);
     }
     rows.unshift(['0630', 'Pkw', pP, pkwAw, d(...dP), 8]);
-    for (const y of [0, 1, 2]) steps.push({ date: `31.12.${2025 + y}`, bookings: rows.filter(([acc]) => y < 2 || acc !== '0630').map(([acc, label, plan, aw, when, nd]) => afaBooking(acc, plan.rows[y], { label, calc: y === 0 ? afaCalc(aw, nd, plan, when) : [] })) });
-    return { title: 'Anlagenkauf verbuchen, Abschreibung berechnen und verbuchen, Erfolgsauswirkung', company, intro: `${company} kauft im Jahr 2025 unter anderem folgende Anlagen:`, names, steps };
+    for (const [acc, label, plan, aw, when, nd] of rows) {
+      const isPkw = acc === '0630', month = Number(when.split('.')[1]);
+      const awTraps = isPkw ? (elektro ? [{ value: gross, msg: 'Beim Elektro-Pkw bis € 40.000,– gibt es den Vorsteuerabzug: Anschaffungswert ist der Nettobetrag.' }] : [{ value: r2(gross / 1.2), msg: 'Beim Pkw mit Verbrennermotor gibt es keinen Vorsteuerabzug: Die Umsatzsteuer gehört zum Anschaffungswert.' }]) : [{ value: grossOf(aw), msg: 'Ohne Vorsteuer.' }];
+      steps.push({ part: 'b', text: `Berechne die Abschreibungsbeträge (lineare Abschreibung) und Buchwerte für ${label === 'Lagerhalle' ? 'die Lagerhalle' : label === 'Lkw' ? 'den Lkw' : 'den Pkw'} in den ersten ${isPkw ? 'zwei' : 'drei'} Jahren der Nutzung.`, afa: afaSpec(label, aw, nd, month, isPkw ? 2 : 3, { awTraps, hint: [isPkw && !elektro ? 'Pkw: Anschaffungswert ist der Bruttobetrag samt NoVA.' : 'Anschaffungswert = Nettobetrag der Rechnung.', `Abschreibungssatz = 100 : ${nd}.`], calc: afaCalc(aw, nd, plan, when) }) });
+    }
+    for (const y of [0, 1, 2]) steps.push({ part: 'c', date: `31.12.${2025 + y}`, bookings: rows.filter(([acc]) => y < 2 || acc !== '0630').map(([acc, label, plan, aw, when, nd]) => afaBooking(acc, plan.rows[y], { label, calc: y === 0 ? afaCalc(aw, nd, plan, when) : [] })) });
+    steps.forEach(x => { if (!x.part && x.bookings) x.part = 'a'; });
+    return { title: 'Anlagenkauf verbuchen, Abschreibung berechnen und verbuchen, Erfolgsauswirkung', company, intro: `${company} kauft im Jahr 2025 unter anderem folgende Anlagen:`, names, steps, tasks: ['Verbuche die laufenden Geschäftsfälle.', `Berechne die Abschreibungsbeträge (lineare Abschreibung) sowie die Buchwerte für den Pkw im ersten und zweiten Jahr der Nutzung und für ${building ? 'die Lagerhalle' : 'den Lkw'} in den ersten drei Jahren der Nutzung. Erfasse die Werte in den Tabellen.`, `Verbuche die Abschreibungen für den Pkw im ersten und zweiten Jahr und für ${building ? 'die Lagerhalle' : 'den Lkw'} in den ersten drei Jahren der Nutzung.`, 'Gib an, ob sich durch den jeweiligen Geschäftsfall das Eigenkapital vermehrt (↑), vermindert (↓) oder ob es sich um eine erfolgsneutrale Buchung (Ø) handelt.'] };
   });
 
   // Payment for small purchases: debit card and credit card are booked like the book's trainer does.
@@ -972,22 +1019,131 @@
     return { title: 'Bewertung von Vorräten, Privatentnahmen und Verbindlichkeiten', company, intro: `${company} hat folgende Geschäftsfälle zu verbuchen. Muss nichts gebucht werden, tippe auf „Keine Buchung“.`, names, steps, allowNone: true };
   });
 
+  // ---- Valuation table like Ü 1.4 / Ü 1.5: for every date the value in the balance sheet and the booking instruction ----
+  tpl('tabelle', 'Bewertungstabelle wie Ü 1.4', 'Wertansatz und Buchungsanweisung zu jedem Stichtag: Grundstück, Beteiligung, Aktien, Waren, Entnahme', 'grundlagen', r => {
+    const bau = r.chance(0.5);
+    const [company, owner, she] = bau ? r.pick([['Bauunternehmen Petra Wallner e. U.', 'Petra Wallner', true], ['Baumeister Stefan Leitgeb e. U.', 'Stefan Leitgeb', false], ['Hochbau Miriam Koller e. U.', 'Miriam Koller', true]]) : r.pick([['Computer Projects Lena Schober KG', 'Lena Schober', true], ['IT-Handel Jonas Brandner e. U.', 'Jonas Brandner', false], ['Technikshop Sara Huber e. U.', 'Sara Huber', true]]);
+    const er = she ? 'sie' : 'er', Er = she ? 'Sie' : 'Er';
+    const steps = [];
+    let g = 0;
+    const per = (dd, mm, yy = 2025) => d(dd, mm, yy);
+    const val = (value, traps = [], hint = []) => ({ value: r2(value), traps: traps.filter(t => Math.abs(t.value - value) >= 0.005).map(t => ({ ...t, value: r2(t.value) })), hint });
+    const row = (o) => steps.push({ group: g, groupTitle: o.title || '', per: o.per, text: o.text, val: o.val, bookings: o.bookings || [] });
+    const fmtM2 = n => `${int(n)} m²`;
+
+    // 1. Unbebautes Grundstück: gemildertes Niederstwertprinzip
+    {
+      g++;
+      const A = r.pick([2000, 5000, 8000, 10000, 12000]), p0 = r.int(60, 160), bd = [r.int(2, 28), r.int(3, 6)], yearPlan = r.int(2027, 2029), pattern = r.pick(['temp', 'perm', 'rise']);
+      row({ title: 'Grundstück', per: per(...bd), text: `${owner} plant den Bau einer zusätzlichen Lagerhalle im Jahr ${yearPlan}. Am ${per(...bd)} kauft ${er} deshalb ein Grundstück mit ${fmtM2(A)} zu ${E(p0)} pro m².`, val: val(A * p0, [{ value: p0, msg: 'Der Wertansatz ist der Wert des ganzen Grundstücks: Fläche mal Preis pro m².' }], ['Wertansatz beim Kauf: die Anschaffungskosten.']) });
+      const KAUSE = ['einer geplanten Abwasserkläranlage in direkter Nachbarschaft', 'einer fix geplanten Mülldeponie in der Nähe', 'des Baus einer Schnellstraße direkt am Grundstück'];
+      const cause = r.pick(KAUSE);
+      let cur = A * p0;
+      const down = (price, y, text) => { const v = A * price; row({ per: per(31, 12, y), text, val: val(v, [{ value: cur, msg: 'Die Wertminderung ist dauerhaft: Es muss abgewertet werden (gemildertes Niederstwertprinzip).' }], ['Dauernde Wertminderung beim Anlagevermögen: abwerten.']), bookings: [bk([['7040', cur - v]], [['0200', cur - v]], { effect: '↓', hint: ['Außerplanmäßige Abschreibung: 7040 an 0200 Unbebaute Grundstücke.'], calc: [`${E(cur)} − ${E(v)} = ${E(cur - v)}`] })] }); cur = v; };
+      const temp = (price, y, text) => { row({ per: per(31, 12, y), text, val: val(cur, [{ value: A * price, msg: 'Nur vorübergehende Wertminderung: Beim Anlagevermögen darf dann nicht abgewertet werden.' }], ['Vorübergehende Wertminderung beim Anlagevermögen (keine Finanzanlage): Wert bleibt gleich.']), bookings: [none({ hint: ['Nicht dauerhaft: keine Abwertung, also keine Buchung.'] })] }); };
+      const up = (price, y, text) => { const v = A * Math.min(p0, price), traps = price > p0 ? [{ value: A * price, msg: 'Aufwerten höchstens bis zu den Anschaffungskosten.' }] : []; traps.push({ value: cur, msg: 'Die Gründe für die Abwertung sind weggefallen: Es muss aufgewertet werden.' }); row({ per: per(31, 12, y), text, val: val(v, traps, ['Zuschreibung, höchstens bis zu den Anschaffungskosten.']), bookings: [v > cur ? bk([['0200', v - cur]], [['4660', v - cur]], { effect: '↑', hint: ['Zuschreibung: 0200 an 4660 Erträge aus der Zuschreibung zum Anlagevermögen.'], calc: [`${E(v)} − ${E(cur)} = ${E(v - cur)}`] }) : none()] }); cur = v; };
+      const capRise = (price, y, text) => row({ per: per(31, 12, y), text, val: val(cur, [{ value: A * price, msg: 'Über die Anschaffungskosten wird nicht aufgewertet.' }], ['Höchstens Anschaffungskosten.']), bookings: [none({ hint: ['Kein Wert über den Anschaffungskosten, also keine Buchung.'] })] });
+      if (pattern === 'temp') {
+        const p1 = p0 - r.int(4, 10), p2 = p0 - r.int(8, 25), p3 = p2 + r.int(4, 30);
+        temp(p1, 2025, `Aufgrund von Spekulationen sinkt der Grundstückspreis am 31. Dezember 2025 vorübergehend auf ${E(p1)} pro m².`);
+        down(p2, 2026, `Ende 2026 beträgt der Grundstückspreis infolge ${cause} ${E(p2)} pro m².`);
+        up(p3, 2027, `2027 wird entschieden, das Vorhaben nicht umzusetzen. Der Grundstückspreis steigt infolgedessen Ende 2027 auf ${E(p3)} pro m².`);
+      } else if (pattern === 'perm') {
+        const p1 = p0 - r.int(25, 60), p2 = p1 + r.int(10, p0 - p1 - 2), p3 = p0 + r.int(2, 20);
+        down(p1, 2025, `Der Grundstückspreis sinkt Ende 2025 auf ${E(p1)} pro m², weil die geplante Umwidmung in Bauland nicht erfolgt. Diese Umwidmung ist kurzfristig nicht absehbar.`);
+        up(p2, 2026, `Im Herbst 2026 erfolgt nun doch die Umwidmung in Bauland, und es kommt zu einem Preisanstieg auf ${E(p2)} pro m².`);
+        up(p3, 2027, `Da die Nachfrage nach Betriebsgrundstücken in der Region weiter ansteigt, liegt der Preis Ende 2027 bei ${E(p3)} pro m².`);
+      } else {
+        const p1 = p0 + r.int(4, 15), p2 = p0 - r.int(10, 25), p3 = p2 - r.int(2, 6);
+        capRise(p1, 2025, `Wegen der großen Nachfrage steigt der Grundstückspreis Ende 2025 auf ${E(p1)} pro m².`);
+        down(p2, 2026, `Ende 2026 beträgt der Grundstückspreis infolge ${cause} nur mehr ${E(p2)} pro m².`);
+        temp(p3, 2027, `Aufgrund von Spekulationen sinkt der Preis am 31. Dezember 2027 vorübergehend auf ${E(p3)} pro m². Am Vorhaben aus 2026 ändert sich nichts.`);
+      }
+    }
+
+    // 2. Finanzanlage (Beteiligung): only clear cases, so no Wahlrecht is needed
+    {
+      g++;
+      const n = r.pick([500, 1000, 1500, 2000]), k0 = r.int(30, 80), bd = [r.int(2, 28), r.int(1, 4)], issuer = r.pick(['Bau AG', 'Holzwerk AG', 'Logistik AG', 'Computer AG']);
+      row({ title: 'Finanzanlage', per: per(...bd), text: `Am ${per(...bd)} werden als Finanzanlage ${int(n)} Stück Aktien zum Kurs von ${E(k0)} von der ${issuer} erworben (Konto 0800 Beteiligungen).`, val: val(n * k0, [], ['Anschaffungskosten: Stückzahl mal Kurs.']) });
+      let cur = n * k0;
+      const k1 = k0 - r.int(6, 15);
+      if (r.chance(0.6)) {
+        row({ per: per(31, 12, 2025), text: `Am 31. Dezember 2025 beträgt infolge eines allgemeinen Kursverfalls der Kurs ${E(k1)}. Eine Erholung des Kurses ist nicht absehbar.`, val: val(n * k1, [{ value: cur, msg: 'Eine Erholung ist nicht absehbar: dauernde Wertminderung, es muss abgewertet werden.' }], ['Dauernde Wertminderung einer Finanzanlage: abwerten.']), bookings: [bk([['8200', cur - n * k1]], [['0800', cur - n * k1]], { effect: '↓', hint: ['8200 Abschreibungen auf Beteiligungen an 0800 Beteiligungen.'], calc: [`${int(n)} · (${E(k0)} − ${E(k1)}) = ${E(cur - n * k1)}`] })] });
+        cur = n * k1;
+        const k2 = k1 + r.int(4, 22), v = n * Math.min(k0, k2);
+        row({ per: per(31, 12, 2026), text: `Nach einer doch eingetretenen Erholung beträgt der Kurs am 31. Dezember 2026 ${E(k2)}.`, val: val(v, [...(k2 > k0 ? [{ value: n * k2, msg: 'Aufwerten höchstens bis zu den Anschaffungskosten.' }] : []), { value: cur, msg: 'Der Grund für die Abwertung ist weggefallen: Es muss aufgewertet werden.' }], ['Zuschreibung, höchstens bis zu den Anschaffungskosten.']), bookings: [bk([['0800', v - cur]], [['8170', v - cur]], { effect: '↑', hint: ['0800 Beteiligungen an 8170 Erträge aus der Zuschreibung zu Finanzanlagen.'], calc: [`${E(v)} − ${E(cur)} = ${E(v - cur)}`] })] });
+      } else {
+        const kUp = k0 + r.int(3, 12);
+        row({ per: per(31, 12, 2025), text: `Am 31. Dezember 2025 beträgt der Kurs ${E(kUp)}.`, val: val(cur, [{ value: n * kUp, msg: 'Über die Anschaffungskosten wird nicht aufgewertet.' }], ['Höchstens Anschaffungskosten.']), bookings: [none({ hint: ['Kurs über den Anschaffungskosten: keine Buchung.'] })] });
+        row({ per: per(31, 12, 2026), text: `Am 31. Dezember 2026 beträgt der Kurs infolge einer Branchenkrise ${E(k1)}. Eine Erholung des Kurses ist nicht absehbar.`, val: val(n * k1, [{ value: cur, msg: 'Eine Erholung ist nicht absehbar: Es muss abgewertet werden.' }], ['Dauernde Wertminderung einer Finanzanlage: abwerten.']), bookings: [bk([['8200', cur - n * k1]], [['0800', cur - n * k1]], { effect: '↓', calc: [`${int(n)} · (${E(k0)} − ${E(k1)}) = ${E(cur - n * k1)}`] })] });
+      }
+    }
+
+    // 3. Handelsware (strenges Niederstwertprinzip), three variants like in Ü 1.5
+    const handelsware = () => {
+      g++;
+      const [thing, unit, range] = bau ? r.pick([['Paletten Fliesenkleber', 'Palette', [180, 320]], ['Dachfenster', 'Stück', [240, 480]]]) : r.pick([['Bluetooth-Kopfhörer', 'Stück', [20, 60]], ['Grafikkarten', 'Stück', [280, 640]], ['Monitore', 'Stück', [160, 340]]]);
+      const ep = r.int(range[0], range[1]), q = r.int(8, 30), left = r.int(3, q - 2), bd = [r.int(2, 28), 11];
+      row({ title: 'Handelsware', per: per(...bd), text: `Am ${per(...bd)} wurden ${q} ${thing} (Handelsware) um € ${eur(ep)} pro ${unit} angeschafft.`, val: val(q * ep, [{ value: ep, msg: 'Wertansatz für die ganze Lieferung: Menge mal Einstandspreis.' }], ['Anschaffungskosten der ganzen Lieferung.']) });
+      const variants = r.shuffle([ep, ep - Math.max(1, Math.round(ep * r.pick([0.08, 0.12, 0.15]))), ep + Math.max(1, Math.round(ep * r.pick([0.06, 0.1, 0.12])))]);
+      variants.forEach((w, i) => {
+        const v = left * Math.min(ep, w), letter = 'abc'[i];
+        row({ per: per(31, 12, 2025), text: `${i === 0 ? `Am 31. Dezember 2025 sind noch ${left} ${thing} auf Lager. Der Wiederbeschaffungspreis pro ${unit} beträgt zu diesem Zeitpunkt: ` : ''}Variante ${letter}) € ${eur(w)}`, val: val(v, [{ value: q * Math.min(ep, w), msg: `Bewertet wird nur der Lagerbestand am 31. Dezember: ${left} ${unit === 'Stück' ? 'Stück' : 'Paletten'}.` }, ...(w > ep ? [{ value: left * w, msg: 'Höchstens bis zu den Anschaffungskosten (Einstandspreis).' }] : []), ...(w < ep ? [{ value: left * ep, msg: 'Umlaufvermögen: strenges Niederstwertprinzip, der niedrigere Wiederbeschaffungspreis muss angesetzt werden.' }] : [])], ['Lagerbestand mal dem niedrigeren Wert aus Einstandspreis und Wiederbeschaffungspreis.']), bookings: [w < ep ? bk([['7800', left * (ep - w)]], [['1600', left * (ep - w)]], { effect: '↓', hint: ['7800 Abschreibungen von Vorräten an 1600 Handelswarenvorrat.'], calc: [`${left} · (${eur(ep)} − ${eur(w)}) = ${E(left * (ep - w))}`] }) : none({ hint: [w === ep ? 'Kein Unterschied zum Einstandspreis: keine Buchung.' : 'Nicht über den Einstandspreis aufwerten: keine Buchung.'] })] });
+      });
+    };
+    // 4. Aktien des Umlaufvermögens (strenges Niederstwertprinzip, Zuschreibung bis zu den Anschaffungskosten)
+    const aktien = () => {
+      g++;
+      const n = r.pick([200, 300, 500, 700, 1000]), k0 = r.int(14, 45), bd = [r.int(2, 28), r.int(5, 9)], ks = [];
+      row({ title: 'Aktien des Umlaufvermögens', per: per(...bd), text: `${owner} kauft ${int(n)} Stück Aktien des Umlaufvermögens, Anschaffungskurs € ${eur(k0)} pro Aktie.`, val: val(n * k0, [], ['Anschaffungskosten: Stückzahl mal Kurs.']) });
+      ks.push(k0 + r.int(1, 5)); ks.push(k0 - r.int(3, 9)); ks.push(ks[1] + r.int(1, k0 - ks[1] + 4));
+      if (r.chance(0.4)) ks.reverse(), ks.splice(0, 3, k0 - r.int(2, 6), k0 + r.int(1, 6), k0 - r.int(4, 10));
+      let cur = n * k0;
+      ks.forEach((k, i) => {
+        const v = n * Math.min(k0, k), y = 2025 + i;
+        const traps = k > k0 ? [{ value: n * k, msg: 'Höchstens bis zu den Anschaffungskosten.' }] : [];
+        if (v < cur) traps.push({ value: cur, msg: 'Umlaufvermögen: strenges Niederstwertprinzip, jede Wertminderung muss berücksichtigt werden.' });
+        if (v > cur) traps.push({ value: cur, msg: 'Der Kurs ist gestiegen: Zuschreibung bis höchstens zu den Anschaffungskosten.' });
+        row({ per: per(31, 12, y), text: `Kurs 31. Dezember ${y} € ${eur(k)} pro Aktie`, val: val(v, traps, ['Stückzahl mal dem niedrigeren Wert aus Anschaffungskurs und Kurs am Stichtag.']), bookings: [v < cur ? bk([['8271', cur - v]], [['2620', cur - v]], { effect: '↓', hint: ['8271 Abschreibungen auf Wertpapiere des Umlaufvermögens an 2620 Aktien des Umlaufvermögens.'], calc: [`${E(cur)} − ${E(v)} = ${E(cur - v)}`] }) : v > cur ? bk([['2620', v - cur]], [['8180', v - cur]], { effect: '↑', hint: ['2620 an 8180 Erträge aus der Zuschreibung zu Wertpapieren des Umlaufvermögens.'], calc: [`${E(v)} − ${E(cur)} = ${E(v - cur)}`] }) : none({ hint: ['Der Wertansatz ändert sich nicht: keine Buchung.'] })] });
+        cur = v;
+      });
+    };
+    if (bau) aktien(); else { handelsware(); aktien(); }
+
+    // 5. Privatentnahme: Teilwert = Wiederbeschaffungspreis
+    {
+      g++;
+      const [what, short, range] = bau ? ['von Baustoffen (Ziegel, Zement)', 'Baustoffe', [180, 480]] : r.pick([['eines Laptops', 'Laptop', [900, 1400]], ['eines Tablets', 'Tablet', [400, 800]]]);
+      const ep = round10(r.int(range[0], range[1])), wbp = ep + r.pick([-1, 1, 1]) * round10(ep * r.pick([0.08, 0.12, 0.2])), vk = round10(Math.max(ep, wbp) * 1.25), dd = [r.int(2, 22), r.pick([8, 11, 12])];
+      row({ title: 'Privatentnahme', per: per(...dd), text: `Private Entnahme ${what} am ${per(...dd)}; Einstandspreis ${short === 'Baustoffe' ? 'der Baustoffe' : `des ${short}s`} € ${eur(ep)}, Wiederbeschaffungspreis am ${per(...dd)} € ${eur(wbp)}, Verkaufspreis exklusive USt € ${eur(vk)}.`, val: val(wbp, [{ value: ep, msg: 'Nicht der Einstandspreis: Entnahmen werden mit dem Teilwert zum Zeitpunkt der Entnahme bewertet.' }, { value: vk, msg: 'Nicht der Verkaufspreis: Der Teilwert ist hier der Wiederbeschaffungspreis.' }, { value: grossOf(wbp), msg: 'Der Wertansatz ist ohne Umsatzsteuer.' }], ['Teilwert zum Zeitpunkt der Entnahme, bei Waren der Wiederbeschaffungspreis.']), bookings: [bk([['9600', grossOf(wbp)]], [['4900', wbp], ['3500', vatOf(wbp)]], { hint: ['9600 Privat an 4900 Eigenverbrauch 20 % und 3500 Umsatzsteuer.'], calc: [`${E(wbp)} + 20 % USt ${E(vatOf(wbp))} = ${E(grossOf(wbp))}`] })] });
+    }
+    return {
+      title: 'Vermögen und Verbindlichkeiten bewerten', company, layout: 'table', allowNone: true, names: {},
+      intro: `Bei ${company} ergeben sich u. a. folgende Sachverhalte.`,
+      tasks: ['Ermittle die Wertansätze und stelle die erforderlichen Buchungsanweisungen auf. Ist keine Buchung nötig, tippe auf „Keine Buchung“.'],
+      steps,
+    };
+  });
+
   // About half of the documents come as a real voucher (invoice, receipt, bank statement); the rest as text like in the book.
   function makeCase(id, seed, o = {}) {
     const t = TEMPLATES.find(x => x.id === id) || TEMPLATES[0], r = makeRng(seed), c = t.make(r), rd = makeRng((seed ^ 0x5bd1e995) >>> 0);
     c.steps.forEach(s => (s.bookings || []).forEach(b => { b.soll = b.soll.filter(l => l.amt > 0); b.haben = b.haben.filter(l => l.amt > 0); }));
+    if (c.tasks) c.steps.forEach(s => { if (!s.part && (s.bookings || []).length && c.layout !== 'table') s.part = s.date?.startsWith('31.12') ? 'c' : 'a'; });
     const withDoc = c.steps.filter(s => s.doc), share = o.docs ?? 0.55;
     withDoc.forEach(s => { s.asDoc = rd.next() < share; });
     if (share > 0 && withDoc.length && !withDoc.some(s => s.asDoc)) rd.pick(withDoc).asDoc = true;
     return { id: t.id, seed, tplTitle: t.title, sub: t.sub, allowNone: !!c.allowNone, ...c };
   }
   const caseBookings = c => c.steps.flatMap(s => s.bookings || []);
+  const caseEntries = c => c.steps.flatMap((s, si) => [...(s.val ? [{ kind: 'val', si, spec: s.val }] : []), ...(s.afa ? [{ kind: 'afa', si, spec: s.afa }] : []), ...(s.bookings || []).map((b, bi) => ({ kind: 'book', si, bi, b }))]);
   function validateTrainer(raw) {
     const out = {};
     for (const t of TEMPLATES) { const x = raw?.[t.id]; if (x && typeof x === 'object') out[t.id] = { runs: Math.max(0, Math.trunc(Number(x.runs)) || 0), perfect: Math.max(0, Math.trunc(Number(x.perfect)) || 0), bookings: Math.max(0, Math.trunc(Number(x.bookings)) || 0), best: Math.min(100, Math.max(0, Math.round(Number(x.best)) || 0)), at: Number(x.at) || 0 }; }
     return out;
   }
-  const trainer = { TEMPLATES: TEMPLATES.map(({ id, title, sub, fig }) => ({ id, title, sub, fig })), makeCase, caseBookings, gradeBooking, resolveAcc, searchKonten, kontoLabel, kontoName, parseAmount, validate: validateTrainer, eur };
+  const trainer = { TEMPLATES: TEMPLATES.map(({ id, title, sub, fig }) => ({ id, title, sub, fig })), makeCase, caseBookings, caseEntries, gradeBooking, gradeAfa, gradeVal, resolveAcc, searchKonten, kontoLabel, kontoName, parseAmount, validate: validateTrainer, eur };
 
   return { ...E_, buildTest, ACC, eur, afaPlan, booking, r2, trainer, KONTO };
 });
