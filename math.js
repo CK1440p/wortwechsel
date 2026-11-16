@@ -412,7 +412,7 @@
     function drawTask() {
       const t = round.task, total = round.plan.length, percent = Math.round(round.i / total * 100), topic = topicById(t.topic);
       shell(`${K}-practice`, round.title);
-      $('#main').innerHTML = `<section class="learning-shell qa-shell m-shell"><div class="learning-top"><button class="back-link" data-action="m-exit">${icon('back')}Beenden</button><span class="learning-set-name">${esc(round.title)}</span><span class="qa-round-count">${round.i + 1} / ${total}</span></div><div class="round-progress"><div><strong>${esc(topic.title)}</strong><span>${round.right} richtig</span></div><div class="mini-progress"><span style="width:${percent}%"></span></div></div>
+      $('#main').innerHTML = `<section class="learning-shell qa-shell m-shell"><div class="learning-top"><button class="back-link" data-action="m-exit">${icon('back')}Beenden</button><span class="learning-set-name">${esc(round.title)}</span><span class="qa-round-count">${round.i + 1} / ${total}</span></div><div class="round-progress" style="--steps:${total}"><div><strong>${esc(topic.title)}</strong><span>${round.right} richtig</span></div><div class="mini-progress"><span style="width:${percent}%"></span></div></div>
         <article class="qa-card m-card" id="m-card"><div class="qa-card-meta"><span class="qa-chip">${esc(t.kicker || t.label)}</span><span class="qa-chip">${STAGES[t.stage]}</span>${round.item.retry ? '<span class="qa-chip again">Nochmal mit neuen Zahlen</span>' : ''}</div>${taskBody(t, 'main')}
         <div class="m-hints" id="m-hints"></div><div id="m-verdict"></div><div class="qa-reveal" id="m-reveal"><div class="qa-reveal-inner" id="m-reveal-inner"></div></div><div class="qa-card-actions m-actions" id="m-actions">${taskActions()}</div></article></section>`;
       live = mount($('#m-card'), t, 'main'); widgets.main = live;
@@ -450,6 +450,9 @@
       M.applyResult(progress(), t.topic, got, t.stage); countAnswer(); save();
       round.results.push({ topic: t.topic, label: t.label, got });
       if (got >= 1) round.right++; else if (got > 0) round.helped++; else round.wrong++;
+      // The bar fills this task's segment right away: it grows, flashes green and bursts on a right answer, shakes red on a wrong one.
+      const bar = document.querySelector('.round-progress');
+      if (bar) { bar.classList.remove('hit', 'miss'); void bar.offsetWidth; const fill = bar.querySelector('.mini-progress>span'); if (fill) fill.style.width = `${Math.min(100, (round.i + 1) / round.plan.length * 100)}%`; const n = bar.querySelector('div:first-child span'); if (n) n.textContent = `${round.right} richtig`; if (got >= 1) bar.classList.add('hit'); else if (got === 0 && !gaveUp) bar.classList.add('miss'); }
       if (got < 1 && round.extra < 3 && !round.item.retry && round.task.answer.type !== 'selfcheck') { round.extra++; round.plan.splice(Math.min(round.i + 3, round.plan.length), 0, { topic: t.topic, gen: t.gen, retry: true, stage: Math.max(1, t.stage - (got > 0 ? 0 : 1)) }); }
       // The booking widget already shows the right booking, so it is not repeated in the solution.
       const steps = (t.solution || []).filter(x => !(x?.booking && t.answer.type === 'booking')), take = t.takeaway;
