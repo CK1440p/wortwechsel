@@ -100,7 +100,7 @@ function app(store = new Map()) {
   const localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
   document.querySelectorAll('dialog').forEach(d => { d.showModal = () => d.setAttribute('open', ''); d.close = () => d.removeAttribute('open'); });
   const context = vm.createContext({ window, document, console, crypto: webcrypto, localStorage, requestAnimationFrame: fn => fn(), setTimeout: () => 1, clearTimeout: () => {}, Blob, URL, TextDecoder });
-  for (const script of ['theme.js', 'core.js', 'seed.js', 'mathcore.js', 'math.js', 'rwcore.js', 'rw.js', 'trainer.js', 'app.js', 'effects.js']) {
+  for (const script of ['theme.js', 'core.js', 'seed.js', 'mathcore.js', 'math.js', 'rwcore.js', 'rw.js', 'trainer.js', 'app.js', 'effects.js', 'calc.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, script), 'utf8'), context, { filename: script });
     if (script === 'core.js') window.WWCore = context.WWCore;
     if (script === 'mathcore.js') window.WWMath = context.WWMath;
@@ -383,4 +383,39 @@ test('trainer UI: valuation table and depreciation table', () => {
   for (let i = 0; i < 40 && !a.$('.tr-step:not([hidden]) .tr-afa'); i++) a.click('.tr-step:not([hidden]) .tr-book:not(.done):not(.shown) [data-action="t-solve"]');
   const afa = a.$('.tr-step:not([hidden]) .tr-afa'); assert.ok(afa); assert.match(afa.textContent, /Abschreibung 2025/); assert.match(afa.textContent, /Buchwert 1\.1\.2026/);
   assert.match(a.$('.tr-tasks').textContent, /Berechne die Abschreibungsbeträge/);
+});
+
+const CALC = require('../dist/calc.js');
+test('calculator: book number formats, percent like a pocket calculator, errors', () => {
+  const ev = CALC.evaluate;
+  const cases = [['10.300 + 179 − 3 %', 10164.63], ['10.300 − 3 % + 179', 10170], ['10.300 − 3 %', 9991], ['10.300 · 3 %', 309], ['10.300 × 3 %', 309], ['20 %', 0.2], ['34.000 : 8 : 2', 2125], ['200.000 ÷ 40', 5000], ['1.234,56 + 0,44', 1235], ['12.5 * 2', 25], ['(790.000 − 690.000) : 2', 50000], ['−5 + 3', -2], ['2 × (3 + 4', 14], ['10.170 * 12,5 % / 2', 635.625], ['1/3', 0.3333333333], ['€ 1.000,– ', 1000]];
+  for (const [src, want] of cases) assert.ok(Math.abs(ev(src.replace('–', '')) - want) < 1e-9, `${src} = ${ev(src.replace('–', ''))}, expected ${want}`);
+  assert.throws(() => ev('5 / 0'), /Division durch 0/);
+  assert.throws(() => ev('5 +'), /unvollständig/);
+  assert.throws(() => ev('2)'), /Klammer zu viel/);
+  assert.throws(() => ev('1,2,3'), /falsch geschrieben/);
+  assert.throws(() => ev('2 ^ 3'), /kann ich nicht rechnen/);
+  assert.equal(CALC.format(9991), '9.991'); assert.equal(CALC.format(635.625), '635,625'); assert.equal(CALC.formatMoney(635.625), '635,63'); assert.equal(CALC.formatMoney(10170), '10.170,00');
+});
+test('calculator UI: only in Rechnungswesen, keys, equals, tape and taking the result into a field', () => {
+  const a = app();
+  a.click('[data-subject="Mathe"]');
+  assert.equal(a.document.body.classList.contains('subject-rw'), false);
+  a.click('[data-subject="Rechnungswesen"]');
+  assert.equal(a.document.body.classList.contains('subject-rw'), true);
+  const panel = a.$('#calc'); assert.ok(a.$('.topbar-right #calc-toggle')); assert.equal(panel.hidden, true);
+  a.click('#calc-toggle'); assert.equal(panel.hidden, false); assert.equal(a.$('#calc-toggle').getAttribute('aria-pressed'), 'true');
+  const press = v => a.click([...panel.querySelectorAll('.calc-keys button')].find(b => b.dataset.v === v));
+  for (const v of ['1', '0', '3', '0', '0', '−', '3', '%']) press(v);
+  assert.equal(a.$('#calc-expr').value, '10300−3%'); assert.equal(a.$('#calc-out').textContent, '= 9.991');
+  a.click('.calc-keys .eq'); assert.equal(a.$('#calc-expr').value, '9.991'); assert.equal(panel.querySelectorAll('.calc-tape li').length, 1);
+  press('7'); assert.equal(a.$('#calc-expr').value, '7', 'a digit after = starts a new calculation');
+  a.click('[data-c="clear"]'); for (const v of ['1', '0', '0']) press(v); a.click('[data-c="chip"][data-k="0"]'); assert.equal(a.$('#calc-expr').value, '120');
+  assert.equal(a.$('.calc-take').disabled, true, 'no amount field used yet');
+  a.click('#nav-rw-trainer'); a.click('[data-action="t-open"][data-tpl="tabelle"]');
+  const fieldEl = a.$('.tr-in.tr-v'); fieldEl.dispatchEvent(new a.window.Event('focusin', { bubbles: true }));
+  assert.equal(a.$('.calc-take').disabled, false);
+  a.click('.calc-take'); assert.equal(fieldEl.value, '120,00');
+  assert.ok(JSON.parse(a.store.get('wortwechsel.calc')).open);
+  a.click('[data-c="close"]'); assert.equal(panel.hidden, true);
 });

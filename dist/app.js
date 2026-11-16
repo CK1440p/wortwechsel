@@ -530,6 +530,7 @@
     if ($('#nav-vocab').hidden !== !vocab) $('#nav-vocab').hidden = !vocab;
     if ($('#nav-math').hidden !== !math) $('#nav-math').hidden = !math;
     if ($('#nav-rw').hidden !== !rw) $('#nav-rw').hidden = !rw;
+    document.body.classList.toggle('subject-rw', rw);
     if ($('#nav-qa').hidden !== (vocab || math || rw)) $('#nav-qa').hidden = vocab || math || rw;
     $('#nav-vocab-catalogs').hidden = !subjectCatalogs(VOCAB).length;
     try { localStorage.setItem(SUBJECT_KEY, subject); } catch {}
