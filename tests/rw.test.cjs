@@ -354,6 +354,18 @@ test('valuation table: values follow the valuation rules', () => {
     }
   }
 });
+test('valuation table: financial asset can be written up again in 2027 like Ü 1.5', () => {
+  let seen = 0;
+  for (let seed = 1; seed <= 200; seed++) {
+    const c = T.makeCase('tabelle', seed), fin = c.steps.filter(s => s.group === c.steps.find(x => x.groupTitle === 'Finanzanlage').group);
+    if (fin.length !== 4) { assert.equal(fin.length, 3, `seed ${seed}`); continue; }
+    seen++;
+    const last = fin[3], b = last.bookings[0];
+    assert.match(last.per, /^31\.12\.2027$/); assert.deepEqual([b.soll[0].acc, b.haben[0].acc], ['0800', '8170']);
+    assert.ok(last.val.value <= fin[0].val.value + 0.005 && last.val.value > fin[2].val.value, `seed ${seed}`);
+  }
+  assert.ok(seen > 20, `only ${seen} cases with the 2027 write-up`);
+});
 test('trainer UI: valuation table and depreciation table', () => {
   const a = app();
   a.click('[data-subject="Rechnungswesen"]'); a.click('#nav-rw-trainer'); a.click('[data-action="t-open"][data-tpl="tabelle"]');

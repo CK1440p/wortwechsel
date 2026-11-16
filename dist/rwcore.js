@@ -1076,7 +1076,11 @@
       } else {
         const kUp = k0 + r.int(3, 12);
         row({ per: per(31, 12, 2025), text: `Am 31. Dezember 2025 beträgt der Kurs ${E(kUp)}.`, val: val(cur, [{ value: n * kUp, msg: 'Über die Anschaffungskosten wird nicht aufgewertet.' }], ['Höchstens Anschaffungskosten.']), bookings: [none({ hint: ['Kurs über den Anschaffungskosten: keine Buchung.'] })] });
-        row({ per: per(31, 12, 2026), text: `Am 31. Dezember 2026 beträgt der Kurs infolge einer Branchenkrise ${E(k1)}. Eine Erholung des Kurses ist nicht absehbar.`, val: val(n * k1, [{ value: cur, msg: 'Eine Erholung ist nicht absehbar: Es muss abgewertet werden.' }], ['Dauernde Wertminderung einer Finanzanlage: abwerten.']), bookings: [bk([['8200', cur - n * k1]], [['0800', cur - n * k1]], { effect: '↓', calc: [`${int(n)} · (${E(k0)} − ${E(k1)}) = ${E(cur - n * k1)}`] })] });
+        row({ per: per(31, 12, 2026), text: `Am 31. Dezember 2026 beträgt der Kurs infolge ${r.pick(['einer Branchenkrise', 'eines allgemeinen Kursverfalls'])} ${E(k1)}. Eine Erholung des Kurses ist nicht absehbar.`, val: val(n * k1, [{ value: cur, msg: 'Eine Erholung ist nicht absehbar: Es muss abgewertet werden.' }], ['Dauernde Wertminderung einer Finanzanlage: abwerten.']), bookings: [bk([['8200', cur - n * k1]], [['0800', cur - n * k1]], { effect: '↓', calc: [`${int(n)} · (${E(k0)} − ${E(k1)}) = ${E(cur - n * k1)}`] })] });
+        cur = n * k1;
+        // Like Ü 1.5: the reason for the write-down falls away, so a write-up back to at most the cost is required.
+        const k3 = k1 + r.int(2, k0 - k1 + 6), v3 = n * Math.min(k0, k3);
+        row({ per: per(31, 12, 2027), text: `Am 31. Dezember 2027 beträgt der Kurs ${E(k3)}. Der Grund für die Abwertung im Jahr 2026 fällt weg.`, val: val(v3, [...(k3 > k0 ? [{ value: n * k3, msg: 'Aufwerten höchstens bis zu den Anschaffungskosten.' }] : []), { value: cur, msg: 'Der Grund für die Abwertung ist weggefallen: Es muss aufgewertet werden.' }], ['Zuschreibung, höchstens bis zu den Anschaffungskosten.']), bookings: [bk([['0800', v3 - cur]], [['8170', v3 - cur]], { effect: '↑', hint: ['0800 Beteiligungen an 8170 Erträge aus der Zuschreibung zu Finanzanlagen.'], calc: [`${int(n)} · ${E(Math.min(k0, k3))} = ${E(v3)}, bisher ${E(cur)}`, `Zuschreibung ${E(v3 - cur)}`] })] });
       }
     }
 
