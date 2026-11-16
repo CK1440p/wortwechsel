@@ -435,3 +435,11 @@ test('practice booking: account fields search the whole Kontenplan like the Buch
   const hi = a.$('[data-side="haben"] .m-acc-in'); hi.value = '2800'; a.fire(hi, 'input'); a.fire(hi, 'focusout');
   assert.equal(hi.value, '2800 Bank (Guthaben bei Kreditinstituten)');
 });
+test('account search: a Kontenplan account beats a supplier that starts the same way', () => {
+  const names = { 33316: 'Maschinenfabrik Hainzl GmbH', 33363: 'Anlagenbau Gruber AG' };
+  assert.equal(T.resolveAcc('masch', names), '0400');
+  assert.equal(T.searchKonten('masch', names, 7)[0].no, '0400');
+  assert.equal(T.resolveAcc('maschinenfabrik', names), '33316');
+  assert.equal(T.resolveAcc('gruber', names), '33363');
+  assert.equal(T.resolveAcc('33316', names), '33316');
+});

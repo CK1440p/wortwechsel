@@ -608,7 +608,8 @@
       const n = fold(name);
       let score = -1;
       if (digits) { if (no.startsWith(digits)) score = 100 - no.length - (names[no] ? -5 : 0); }
-      else if (words.every(w => n.includes(w) || no.startsWith(w))) score = (n.startsWith(words[0]) ? 50 : 20) + (names[no] ? 10 : 0) - n.length / 100;
+      // Suppliers of the case float up only for matches inside their name ("gruber"); when a Kontenplan account and a supplier both start with the query ("masch": 0400 Maschinen vs. Maschinenfabrik …), the account wins.
+      else if (words.every(w => n.includes(w) || no.startsWith(w))) { const pre = n.startsWith(words[0]); score = (pre ? 50 : 20) + (names[no] && !pre ? 10 : 0) - n.length / 100; }
       if (score >= 0) scored.push({ no, name, score });
     }
     return scored.sort((a, b) => b.score - a.score || a.no.localeCompare(b.no)).slice(0, limit);

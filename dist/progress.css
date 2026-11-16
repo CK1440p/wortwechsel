@@ -13,26 +13,37 @@
 /* 0–45 %: the shine crosses the whole fill; 45–100 %: it waits off to the right. The colours flow one full period (seamless). */
 @keyframes bar-shine{0%{background-position:-90% 0,0% 0}45%{background-position:190% 0,90% 0}100%{background-position:190% 0,200% 0}}
 
-/* ---- The bar on top of every learning round: calm, so it does not pull attention from the task ----
-   (2026-11-16: the first version had glow, stripes and a pulsing head; Adam found it distracting during practice.) */
+/* ---- The bar on top of every learning round ----
+   History 2026-11-16: v1 "crazy" (glow, stripes, pulsing head) → too distracting while practising → v2 calm →
+   Adam: crazy look back, but the GLOW only right after a correct answer. So: lively bar without any glow at rest;
+   .hit (set by finish() in math.js on a right answer) adds the glow for 2.4 s and fades it out again. */
 /* :root raises specificity above the dark theme rule [data-theme=dark] :is(...,.mini-progress,...){background:...} in motion-theme.css */
-:root .round-progress .mini-progress{position:relative;height:8px;border-radius:99px;background-color:var(--bar-track);
-  background-image:repeating-linear-gradient(90deg,transparent 0 calc(100% / var(--steps) - 2px),var(--bar-tick) calc(100% / var(--steps) - 2px) calc(100% / var(--steps)))}
-/* static colours, one soft shine every 8 s */
-.round-progress .mini-progress>span{border-radius:inherit;transition:width .8s cubic-bezier(.22,1,.36,1);
-  background:
-    linear-gradient(100deg,transparent 30%,#ffffff4d 50%,transparent 70%) -90% 0/45% 100% no-repeat,
-    linear-gradient(90deg,var(--bar-a),var(--bar-b) 60%,var(--bar-c)) 0 0/100% 100% no-repeat;
-  animation:bar-shine-calm 8s linear infinite}
-@keyframes bar-shine-calm{0%{background-position:-90% 0,0 0}22%,100%{background-position:190% 0,0 0}}
+:root .round-progress .mini-progress{position:relative;height:12px;border-radius:99px;overflow:visible;background-color:var(--bar-track);
+  background-image:repeating-linear-gradient(90deg,transparent 0 calc(100% / var(--steps) - 2px),var(--bar-tick) calc(100% / var(--steps) - 2px) calc(100% / var(--steps)));
+  box-shadow:inset 0 1px 3px #0000002e}
+/* flowing colours + shine come from the shared .mini-progress>span rule above (3.6 s) */
+.round-progress .mini-progress>span{z-index:1;min-width:12px;border-radius:inherit;transition:width 1s cubic-bezier(.34,1.56,.64,1);box-shadow:inset 0 1px 0 #ffffff59}
+/* moving stripes inside the fill */
+.round-progress .mini-progress>span::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:repeating-linear-gradient(-45deg,#ffffff2e 0 6px,transparent 6px 12px) 0 0/17px 17px;animation:bar-stripes .9s linear infinite;mix-blend-mode:overlay}
+@keyframes bar-stripes{to{background-position:17px 0}}
+/* head at the tip: a plain bright dot that breathes, no glow at rest */
+.round-progress .mini-progress>span::after{content:'';position:absolute;top:50%;right:-3px;width:16px;height:16px;margin-top:-8px;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,#fff 0 34%,color-mix(in srgb,var(--bar-d) 80%,#fff) 46%,transparent 70%);
+  animation:bar-head 1.8s ease-in-out infinite}
+@keyframes bar-head{50%{transform:scale(1.2)}}
 
-/* answer feedback: short and quiet */
-.round-progress.hit .mini-progress>span{animation:bar-hit-fill .7s ease-out,bar-shine-calm 8s linear .7s infinite}
-@keyframes bar-hit-fill{40%{filter:brightness(1.25) saturate(1.1)}}
-.round-progress.hit>div:first-child span{color:var(--bar-hit);transition:color .3s}
-.round-progress.miss .mini-progress{animation:bar-miss .6s ease-out}
-@keyframes bar-miss{0%{box-shadow:0 0 0 2px color-mix(in srgb,var(--bar-miss) 55%,transparent)}100%{box-shadow:0 0 0 2px transparent}}
+/* right answer: the glow comes on, the head bursts, the count pops – then everything calms down again */
+.round-progress.hit .mini-progress>span{animation:bar-shine 3.6s linear infinite,bar-glow 2.4s cubic-bezier(.22,1,.36,1)}
+@keyframes bar-glow{0%{box-shadow:inset 0 1px 0 #ffffff59}18%{box-shadow:inset 0 1px 0 #ffffff59,0 0 16px -1px var(--bar-a),0 0 34px -6px var(--bar-b),0 0 0 3px color-mix(in srgb,var(--bar-hit) 55%,transparent)}100%{box-shadow:inset 0 1px 0 #ffffff59}}
+.round-progress.hit .mini-progress>span::after{animation:bar-burst 2.4s cubic-bezier(.22,1,.36,1),bar-head 1.8s ease-in-out 2.4s infinite}
+@keyframes bar-burst{0%{transform:scale(1)}14%{transform:scale(2.4);background:radial-gradient(circle,#fff 0 30%,var(--bar-hit) 46%,transparent 72%);box-shadow:0 0 14px 3px color-mix(in srgb,var(--bar-d) 70%,transparent),0 0 30px 8px color-mix(in srgb,var(--bar-a) 45%,transparent)}40%{transform:scale(1.15);box-shadow:0 0 10px 2px color-mix(in srgb,var(--bar-d) 50%,transparent)}100%{transform:scale(1);box-shadow:none}}
+.round-progress.hit>div:first-child span{display:inline-block;color:var(--bar-hit);animation:bar-count .6s cubic-bezier(.34,1.56,.64,1)}
+@keyframes bar-count{40%{transform:scale(1.35)}}
+/* wrong answer: short shake with a thin red ring, no glow */
+.round-progress.miss .mini-progress{animation:bar-miss .5s ease-in-out}
+@keyframes bar-miss{0%{box-shadow:inset 0 1px 3px #0000002e,0 0 0 2px color-mix(in srgb,var(--bar-miss) 60%,transparent)}20%{transform:translateX(-4px)}40%{transform:translateX(3px)}60%{transform:translateX(-2px)}80%{transform:translateX(1px)}100%{transform:none;box-shadow:inset 0 1px 3px #0000002e,0 0 0 2px transparent}}
 
 @media(prefers-reduced-motion:reduce){
-  .mini-progress>span,.round-progress .mini-progress>span,.round-progress.miss .mini-progress{animation:none!important}
+  .mini-progress>span,.round-progress .mini-progress>span,.round-progress .mini-progress>span::before,.round-progress .mini-progress>span::after,.round-progress.miss .mini-progress,.round-progress.hit>div:first-child span{animation:none!important}
 }
