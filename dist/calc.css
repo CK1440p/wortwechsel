@@ -1,6 +1,6 @@
 /* Taschenrechner (calc.js): nur im Fach Rechnungswesen sichtbar. */
 :root{--calc-bg:var(--surface,#fff);--calc-key:#f2f4fb;--calc-key-hover:#e6eafa;--calc-fn:#e9ecf7;--calc-op:color-mix(in srgb,var(--tr-accent,#d6336c) 12%,#fff);--calc-screen:#f7f8fc;--calc-shadow:0 24px 60px -18px #1b244a55,0 2px 8px #1b244a14}
-:root[data-theme="dark"]{--calc-bg:#151a28;--calc-key:#1f2538;--calc-key-hover:#283049;--calc-fn:#252c42;--calc-op:color-mix(in srgb,var(--tr-accent,#ff7aa8) 18%,#1f2538);--calc-screen:#0f131e;--calc-shadow:0 28px 70px -16px #000c,0 0 0 1px #ffffff0d}
+:root[data-theme="dark"]{--calc-bg:#1a1a1a;--calc-key:#262626;--calc-key-hover:#313131;--calc-fn:#2d2d2d;--calc-op:color-mix(in srgb,var(--tr-accent,#ff7aa8) 18%,#262626);--calc-screen:#131313;--calc-shadow:0 28px 70px -16px #000c,0 0 0 1px #ffffff0d}
 body:not(.subject-rw) .calc-toggle,body:not(.subject-rw) .calc,body:not(.subject-rw) .calc-fab{display:none!important}
 .calc-fab{display:none}
 .calc-toggle.on{background:var(--blue-light);color:var(--blue)}
@@ -47,7 +47,7 @@ body:not(.subject-rw) .calc-toggle,body:not(.subject-rw) .calc,body:not(.subject
 .calc-keys .eq:hover{background:color-mix(in srgb,var(--tr-accent,#d6336c) 86%,#000)}
 
 .calc-take{display:flex;align-items:center;justify-content:center;gap:8px;min-height:40px;border-radius:12px;background:var(--blue);color:#fff;font-weight:650;font-size:13px}
-:root[data-theme="dark"] .calc-take{color:#14102a}
+:root[data-theme="dark"] .calc-take{color:#141414}
 .calc-take .icon{width:16px;height:16px}
 .calc-take:disabled{background:var(--calc-key);color:var(--muted);cursor:not-allowed}
 .calc-filled{animation:calc-filled .9s ease}

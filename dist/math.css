@@ -1,6 +1,6 @@
 /* Mathe: formulas, graphs and interactive tasks. Loaded before the hover and phone layers so they can refine it. */
 :root{--p-f:#3a66e0;--p-fp:#df7a1e;--p-sec:#df7a1e;--p-tan:#b83a93;--p-g:#17907f;--p-grid:#e4e7f1;--p-axis:#79829c;--p-text:#6a7290;--p-ok:#1f9a62;--p-bad:#df4d68;--p-user:#7659ed}
-:root[data-theme="dark"]{--p-f:#86abff;--p-fp:#ffb066;--p-sec:#ffb066;--p-tan:#f283cd;--p-g:#62dcc3;--p-grid:#252b3f;--p-axis:#8891ac;--p-text:#a4adc6;--p-ok:#62dca0;--p-bad:#ff8a9f;--p-user:#b9a8ff}
+:root[data-theme="dark"]{--p-f:#86abff;--p-fp:#ffb066;--p-sec:#ffb066;--p-tan:#f283cd;--p-g:#62dcc3;--p-grid:#2c2c2c;--p-axis:#919191;--p-text:#adadad;--p-ok:#62dca0;--p-bad:#ff8a9f;--p-user:#b9a8ff}
 
 /* Formulas */
 .m{font-synthesis:style;font-variant-numeric:lining-nums;white-space:normal}

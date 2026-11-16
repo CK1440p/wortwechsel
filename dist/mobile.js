@@ -2,7 +2,7 @@
 (() => {
   const root = document.documentElement;
   const meta = document.querySelector('#theme-color');
-  const paint = () => meta?.setAttribute('content', root.dataset.theme === 'light' ? '#f7f8fc' : '#0b0d16');
+  const paint = () => meta?.setAttribute('content', root.dataset.theme === 'light' ? '#f7f8fc' : '#0d0d0d');
   paint();
   new MutationObserver(paint).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
 
