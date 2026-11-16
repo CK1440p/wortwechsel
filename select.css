@@ -1,0 +1,42 @@
+/* Custom dropdowns for every <select> (select.js). The real select stays in the DOM but is invisible. */
+.xs-native{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;overflow:hidden;clip-path:inset(50%);margin:0!important;padding:0!important;border:0!important}
+
+.xs{position:relative;display:inline-flex;min-width:0;max-width:100%;vertical-align:middle}
+.xs-btn{display:flex;align-items:center;gap:10px;width:100%;min-width:0;min-height:44px;padding:0 12px 0 14px;border:1.5px solid var(--border);border-radius:12px;background:var(--surface-raised);color:var(--text);font:600 15px 'DM Sans',system-ui,sans-serif;text-align:left;cursor:pointer;transition:border-color .2s,box-shadow .25s,background .2s}
+.xs-btn:hover:not(:disabled){border-color:color-mix(in srgb,var(--tr-accent,#d6336c) 45%,var(--border))}
+.xs-btn:focus-visible,.xs.open .xs-btn{outline:none;border-color:color-mix(in srgb,var(--tr-accent,#d6336c) 70%,transparent);box-shadow:0 0 0 4px color-mix(in srgb,var(--tr-accent,#d6336c) 16%,transparent);background:var(--surface)}
+.xs-btn:disabled{cursor:default}
+.xs-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xs-btn.placeholder .xs-label{color:color-mix(in srgb,var(--muted) 75%,transparent);font-weight:500}
+.xs-chev{flex:none;width:18px;height:18px;color:var(--muted);transition:transform .25s cubic-bezier(.22,1,.36,1)}
+.xs.open .xs-chev{transform:rotate(180deg)}
+.xs-btn:disabled .xs-chev{opacity:0}
+.xs.ok .xs-btn{border-color:var(--p-ok,#2fa866);background:color-mix(in srgb,var(--p-ok,#2fa866) 11%,var(--surface))}
+.xs.bad .xs-btn{border-color:var(--p-bad,#e0405f);background:color-mix(in srgb,var(--p-bad,#e0405f) 9%,var(--surface))}
+
+/* the list: same look as the account list in the Buchungstrainer (.tr-dd) */
+.xs-dd{position:fixed;z-index:1000;width:max-content;overflow:auto;margin:0;padding:6px;list-style:none;border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:0 22px 50px -12px #0000006b;animation:xs-in .22s cubic-bezier(.22,1,.36,1)}
+.xs-dd.up{animation-name:xs-in-up}
+@keyframes xs-in{from{opacity:0;transform:translateY(-6px) scale(.98)}}
+@keyframes xs-in-up{from{opacity:0;transform:translateY(6px) scale(.98)}}
+.xs-dd li{display:flex;align-items:center;gap:8px;padding:9px 12px 9px 8px;border-radius:11px;font:500 14px 'DM Sans',system-ui,sans-serif;color:var(--text);cursor:pointer;transition:background .15s}
+.xs-dd li.active,.xs-dd li:hover{background:color-mix(in srgb,var(--tr-accent,#d6336c) 13%,var(--surface))}
+.xs-dd li.placeholder{color:var(--muted)}
+.xs-dd li.disabled{opacity:.45;cursor:default}
+.xs-check{flex:none;width:16px;height:16px;color:var(--tr-accent,#d6336c);opacity:0}
+.xs-dd li[aria-selected="true"] .xs-check{opacity:1}
+.xs-dd li[aria-selected="true"]{font-weight:650}
+@media(prefers-reduced-motion:reduce){.xs-dd{animation:none}.xs-chev{transition:none}}
+
+/* ---- contexts ---- */
+/* practice/test fields: the bordered box is .m-input, so the button is plain inside it */
+.m-input.m-select{padding:0}
+.m-input .xs{flex:1;align-self:stretch}
+.m-input .xs-btn{border:0;background:transparent;box-shadow:none!important;min-height:44px;border-radius:12px;padding:0 12px}
+.m-field.ok .m-input .xs-btn,.m-field.bad .m-input .xs-btn{background:transparent}
+/* cloze: inline in the sentence */
+.m-cloze .xs{margin:2px 0}
+.m-cloze .xs-btn{min-height:40px;padding:0 10px 0 12px}
+/* forms (settings, import) */
+.form-grid .xs{display:flex;width:100%}
+.form-grid .xs-btn{min-height:42px;font-size:13px;font-weight:550;border-radius:9px}
