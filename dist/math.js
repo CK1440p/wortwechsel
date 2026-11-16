@@ -292,28 +292,58 @@
       }
       return base;
     }
+    // Account fields work like in the Buchungstrainer: type a number or a word, pick from the whole Kontenplan.
     function mountBooking(host, a, pid, onChange, base) {
-      const box = host.querySelector('.m-book'), opts = `<option value="">Konto wählen …</option>${a.accounts.map(x => `<option value="${esc(x.no)}">${esc(x.label)}</option>`).join('')}`;
+      const box = host.querySelector('.m-book'), T = window.WWRw?.trainer;
+      // Supplier accounts (330..) only exist in this task, so their names come from the answer's account list.
+      const names = Object.fromEntries(a.accounts.filter(x => !T?.kontoName(x.no)).map(x => [x.no, x.label.replace(/^\d+\s+/, '')]));
       let effect = null, locked = false;
       const lines = side => [...box.querySelectorAll(`[data-side="${side}"] .m-book-line`)];
       const clear = el => el.classList.remove('ok', 'bad');
+      const ddOf = input => input.parentElement.querySelector('.m-dd');
+      function closeList(input) { const dd = ddOf(input); if (dd) dd.hidden = true; input.setAttribute('aria-expanded', 'false'); }
+      function suggest(input) {
+        const dd = ddOf(input), hits = T.searchKonten(input.value, names, 7);
+        if (!hits.length || input.disabled) return closeList(input);
+        dd.innerHTML = hits.map((h, i) => `<li role="option" data-no="${esc(h.no)}" class="${i ? '' : 'active'}" aria-selected="${!i}"><b>${esc(h.no)}</b><span>${esc(h.name)}</span></li>`).join('');
+        dd.hidden = false; input.setAttribute('aria-expanded', 'true');
+      }
+      function choose(input, no) {
+        input.value = T.kontoLabel(no, names); closeList(input);
+        input.closest('.m-book-line').classList.remove('ok', 'bad'); onChange();
+        input.closest('.m-book-line').querySelector('.m-num')?.focus();
+      }
+      // On leaving the field a typed number or exact name becomes "2800 Bank", like in the trainer.
+      function tidy(input) { const no = T.resolveAcc(input.value, names); if (no && T.kontoName(no, names)) input.value = T.kontoLabel(no, names); }
+      const accOf = input => { const v = input.value.trim(); return v ? (T.resolveAcc(v, names) || v) : ''; };
       function add(side, focus = false) {
         if (locked) return;
-        const list = box.querySelector(`[data-side="${side}"] .m-book-lines`);
-        list.insertAdjacentHTML('beforeend', `<div class="m-book-line"><div class="m-input m-select"><select aria-label="${side === 'soll' ? 'Soll' : 'Haben'}-Konto">${opts}</select></div>${a.noAmounts ? '' : '<div class="m-input m-amt"><input class="m-num" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Betrag"><span class="m-unit">€</span></div>'}<button type="button" class="m-book-del" data-action="m-book-del" data-part="${pid}" aria-label="Zeile entfernen">${icon('close')}</button></div>`);
-        const line = list.lastElementChild;
-        line.querySelectorAll('select, input').forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => { clear(line); onChange(); }));
-        if (focus) line.querySelector('select')?.focus();
+        const list = box.querySelector(`[data-side="${side}"] .m-book-lines`), who = side === 'soll' ? 'Soll' : 'Haben';
+        list.insertAdjacentHTML('beforeend', `<div class="m-book-line"><div class="m-input m-acc"><input class="m-acc-in" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" placeholder="${who}-Konto" aria-label="${who}-Konto" role="combobox" aria-expanded="false" aria-autocomplete="list"><ul class="m-dd" role="listbox" hidden></ul></div>${a.noAmounts ? '' : '<div class="m-input m-amt"><input class="m-num" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Betrag"><span class="m-unit">€</span></div>'}<button type="button" class="m-book-del" data-action="m-book-del" data-part="${pid}" aria-label="Zeile entfernen">${icon('close')}</button></div>`);
+        const line = list.lastElementChild, acc = line.querySelector('.m-acc-in'), dd = line.querySelector('.m-dd');
+        line.querySelectorAll('input').forEach(el => el.addEventListener('input', () => { clear(line); if (el === acc) suggest(acc); onChange(); }));
+        acc.addEventListener('focusout', () => { setTimeout(() => closeList(acc), 0); tidy(acc); });
+        dd.addEventListener('pointerdown', ev => { const li = ev.target.closest('li'); if (!li) return; ev.preventDefault(); choose(acc, li.dataset.no); });
+        acc.addEventListener('keydown', ev => {
+          const open = !dd.hidden, items = [...dd.children];
+          if (open && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) {
+            ev.preventDefault(); ev.stopPropagation();
+            const i = items.findIndex(x => x.classList.contains('active')), j = (i + (ev.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+            items.forEach((x, n) => { x.classList.toggle('active', n === j); x.setAttribute('aria-selected', String(n === j)); });
+            items[j].scrollIntoView?.({ block: 'nearest' });
+          } else if (open && ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); closeList(acc); }
+          else if (open && ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); const act = dd.querySelector('.active') || items[0]; if (act) choose(acc, act.dataset.no); }
+          else if (open && ev.key === 'Tab' && !ev.shiftKey && !/^\d{4,5}\b/.test(acc.value.trim())) { const act = dd.querySelector('.active'); if (act) { acc.value = T.kontoLabel(act.dataset.no, names); onChange(); } }
+        });
+        if (focus) acc.focus();
       }
       add('soll'); add('haben');
-      // Reading the chosen option also works in DOM implementations without select.value (used in the tests).
-      const selVal = sel => sel.value ?? sel.querySelector('option[selected]')?.getAttribute('value') ?? '';
-      const read = side => lines(side).map(l => ({ acc: selVal(l.querySelector('select')), amt: l.querySelector('input')?.value ?? '' })).filter(x => x.acc || x.amt);
+      const read = side => lines(side).map(l => ({ acc: accOf(l.querySelector('.m-acc-in')), amt: l.querySelector('.m-num')?.value ?? '' })).filter(x => x.acc || x.amt);
       return { ...base, add: side => add(side, true), del(btn) { if (locked) return; const line = btn.closest('.m-book-line'), side = line.closest('[data-side]').dataset.side; line.remove(); if (!lines(side).length) add(side); onChange(); },
         setEffect(v) { if (locked) return; effect = v; box.querySelectorAll('[data-action="m-effect"]').forEach(b => { b.setAttribute('aria-pressed', String(b.dataset.v === v)); b.classList.remove('ok', 'bad'); }); onChange(); },
         read: () => ({ soll: read('soll'), haben: read('haben'), effect }),
-        show(res) { for (const side of ['soll', 'haben']) for (const l of lines(side)) { const acc = selVal(l.querySelector('select')), info = res.lines?.[side]?.find(x => x.acc === acc); clear(l); if (acc) l.classList.add(info?.accOk && info.amtOk ? 'ok' : 'bad'); } if (a.effect && effect) box.querySelector(`[data-action="m-effect"][data-v="${effect}"]`)?.classList.add(res.effectOk ? 'ok' : 'bad'); },
-        lock() { locked = true; box.classList.add('locked'); box.querySelectorAll('select, input, button').forEach(el => { el.disabled = true; }); },
+        show(res) { for (const side of ['soll', 'haben']) for (const l of lines(side)) { const acc = accOf(l.querySelector('.m-acc-in')), info = res.lines?.[side]?.find(x => x.acc === acc); clear(l); if (acc) l.classList.add(info?.accOk && info.amtOk ? 'ok' : 'bad'); } if (a.effect && effect) box.querySelector(`[data-action="m-effect"][data-v="${effect}"]`)?.classList.add(res.effectOk ? 'ok' : 'bad'); },
+        lock() { locked = true; box.classList.add('locked'); box.querySelectorAll('.m-dd').forEach(dd => { dd.hidden = true; }); box.querySelectorAll('input, button').forEach(el => { el.disabled = true; }); },
         final() { const right = box.querySelector('.m-book-right'); right.hidden = false; right.innerHTML = `<div class="qa-solution-label">${icon('check')}Richtige Buchung</div>${stepHtml({ booking: a })}`; } };
     }
     function mountSketch(host, a, pid, onChange, base) {

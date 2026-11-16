@@ -124,15 +124,16 @@ test('Rechnungswesen is its own subject next to Mathe', () => {
 test('a booking task is answered through the Soll/Haben widget and saved as progress', () => {
   const a = app();
   a.click('[data-subject="Rechnungswesen"]'); a.click('[data-action="m-topic"][data-topic="abuch"]'); a.click('[data-action="m-gen"][data-gen="ab-euro"]');
-  const fill = (side, acc, value) => { const line = [...a.document.querySelectorAll(`[data-side="${side}"] .m-book-line`)].pop(); const sel = line.querySelector('select'); sel.querySelectorAll('option').forEach(o => o.toggleAttribute('selected', o.getAttribute('value') === acc)); a.fire(sel, 'change'); const inp = line.querySelector('input'); inp.value = value; a.fire(inp, 'input'); };
-  const assetAcc = [...a.document.querySelectorAll('[data-side="haben"] select option')].map(o => o.value).find(v => /^0/.test(v));
+  const fill = (side, acc, value) => { const line = [...a.document.querySelectorAll(`[data-side="${side}"] .m-book-line`)].pop(); const ai = line.querySelector('.m-acc-in'); ai.value = acc; a.fire(ai, 'input'); a.fire(ai, 'focusout'); const inp = line.querySelector('.m-num'); inp.value = value; a.fire(inp, 'input'); };
+  const assetOf = () => a.text().match(/\((0\d{3}) /)[1];
+  const assetAcc = assetOf();
   a.click('[data-action="m-check"]'); assert.equal(a.$('[data-action="m-next"]'), null, 'empty booking is not checked');
   fill('soll', assetAcc, '1'); fill('haben', '7010', '1'); a.click('[data-action="m-check"]');
   assert.match(a.text(), /Noch nicht ganz/); assert.match(a.text(), /vertauscht/);
   a.click('[data-action="m-solve"]'); assert.ok(a.$('.m-book-right .m-bk')); assert.match(a.$('.m-book-right').textContent, /7010/);
   assert.equal(a.data().rw.topics.abuch.seen, 1);
   a.click('[data-action="m-next"]');
-  const acc2 = [...a.document.querySelectorAll('[data-side="haben"] select option')].map(o => o.value).find(v => /^0/.test(v));
+  const acc2 = assetOf();
   fill('soll', '7010', '1,00'); fill('haben', acc2, '1');
   if (a.$('[data-action="m-check"]') && a.text().includes('Erinnerungseuro')) { a.click('[data-action="m-check"]'); assert.match(a.$('#m-verdict').textContent, /Richtig|Genau|Stimmt/); }
 });
@@ -418,4 +419,19 @@ test('calculator UI: only in Rechnungswesen, keys, equals, tape and taking the r
   a.click('.calc-take'); assert.equal(fieldEl.value, '120,00');
   assert.ok(JSON.parse(a.store.get('wortwechsel.calc')).open);
   a.click('[data-c="close"]'); assert.equal(panel.hidden, true);
+});
+test('practice booking: account fields search the whole Kontenplan like the Buchungstrainer', () => {
+  const a = app();
+  a.click('[data-subject="Rechnungswesen"]'); a.click('[data-action="m-topic"][data-topic="abuch"]'); a.click('[data-action="m-gen"][data-gen="ab-euro"]');
+  assert.equal(a.document.querySelectorAll('.m-book select').length, 0, 'no native select any more');
+  const ai = a.$('[data-side="soll"] .m-acc-in'), dd = ai.parentElement.querySelector('.m-dd');
+  assert.equal(ai.getAttribute('role'), 'combobox'); assert.equal(dd.hidden, true);
+  ai.value = 'abschr'; a.fire(ai, 'input');
+  assert.equal(dd.hidden, false); assert.equal(ai.getAttribute('aria-expanded'), 'true');
+  const nos = [...dd.querySelectorAll('li')].map(li => li.dataset.no);
+  assert.ok(nos.includes('7010') && nos.length <= 7, nos.join());
+  dd.querySelector('li[data-no="7010"]').dispatchEvent(new a.window.Event('pointerdown', { bubbles: true, cancelable: true }));
+  assert.equal(ai.value, '7010 Abschreibungen von Sachanlagen'); assert.equal(dd.hidden, true);
+  const hi = a.$('[data-side="haben"] .m-acc-in'); hi.value = '2800'; a.fire(hi, 'input'); a.fire(hi, 'focusout');
+  assert.equal(hi.value, '2800 Bank (Guthaben bei Kreditinstituten)');
 });
