@@ -29,7 +29,7 @@
     '4660': 'Erträge aus der Zuschreibung zum Anlagevermögen', '4900': 'Eigenverbrauch 20 %',
     '7010': 'Abschreibungen von Sachanlagen', '7040': 'Außerplanmäßige Abschreibungen von Anlagevermögen', '7060': 'Abschreibungen geringwertiger Wirtschaftsgüter', '7800': 'Abschreibungen von Vorräten',
     '8170': 'Erträge aus der Zuschreibung zu Finanzanlagen', '8180': 'Erträge aus der Zuschreibung zu Wertpapieren des UV', '8200': 'Abschreibungen auf Beteiligungen', '8271': 'Abschreibungen auf Wertpapiere des UV',
-    '9600': 'Privat', KV: 'Kursverluste (Aufwand)', KG: 'Kursgewinne (Ertrag)',
+    '9600': 'Privat', '7815': 'Fremdwährungskursverluste', '4840': 'Fremdwährungskursgewinne', '3180': 'Verbindlichkeiten Kreditkartenunternehmen', '3190': 'Verbindlichkeiten Debitkarten',
   };
   const SUPPLIERS = ['Maschinenbau Steiner GmbH', 'Technik Huber KG', 'Bürowelt Lechner GmbH', 'Montagebau Kern OG', 'Elektro Pichler GmbH', 'Anlagenbau Gruber AG', 'Ladenbau Wimmer GmbH', 'Autohaus Mayrhofer GmbH', 'Nutzfahrzeuge Brandl GmbH', 'IT-Service Moser e. U.'];
   function supplier(r, names, pick) {
@@ -38,7 +38,8 @@
     names[no] = name;
     return { no, name };
   }
-  const label = (no, names = {}) => `${/^\d/.test(no) ? `${no} ` : ''}${names[no] || ACC[no]}`;
+  const label = (no, names = {}) => `${/^\d/.test(no) ? `${no} ` : ''}${names[no] || KONTO_NAME(no) || ACC[no]}`;
+  const KONTO_NAME = no => typeof KONTO !== 'undefined' ? KONTO.get(no) : undefined;
   // A booking answer: the accounts to choose from are the right ones plus typical mix-ups.
   function booking(r, soll, haben, { names = {}, pool = [], effect, noAmounts } = {}) {
     const used = [...soll, ...haben].map(([a]) => a), all = [...new Set([...used, ...pool])];
@@ -311,10 +312,10 @@
     const f = M.kit.repeat(() => { const x = fx(r); return x.up ? x : null; }), names = {}, s = supplier(r, names, 'US Outdoor Supply Inc.'), d = r2(f.e1 - f.e0);
     if (st === 3) {
       const k2 = r2(f.k1 + r.pick([0.02, 0.03, 0.05, 0.09])), e2 = r2(f.usd / k2), bil2 = Math.max(f.e0, e2), back = r2(f.e1 - bil2);
-      const ans = booking(r, [[s.no, back]], [['KG', back]], { names, pool: ['KV', '2800', '4660'], effect: '↑' });
+      const ans = booking(r, [[s.no, back]], [['4840', back]], { names, pool: ['7815', '2800', '4660'], effect: '↑' });
       return { kicker: 'Buchung', lead: `${fxLead(f)} Die Verbindlichkeit wurde daher mit ${E(f.e1)} bilanziert. Sie ist am 31.12. des Folgejahres noch offen, Kurs dann: 1 € = ${kurs(k2)} USD. Lieferantenkonto ${s.no} (${s.name}).`, ask: 'Buche die Bewertung zum 31.12. des Folgejahres.', answer: ans, hints: [`Wert neu: ${E(e2)}. Unter den Entstehungswert von ${E(f.e0)} darf aber nicht abgewertet werden.`, 'Verbindlichkeit an Ertragskonto.'], solution: [`Neuer Bilanzansatz: ${E(bil2)}`, `Abwertung: ${E(f.e1)} − ${E(bil2)} = ${E(back)}`, step(ans)] };
     }
-    const ans = booking(r, [['KV', d]], [[s.no, d]], { names, pool: ['KG', '2500', '1600'], effect: '↓' });
+    const ans = booking(r, [['7815', d]], [[s.no, d]], { names, pool: ['4840', '2500', '1600'], effect: '↓' });
     return { kicker: 'Buchung', lead: `${fxLead(f)} Lieferantenkonto ${s.no} (${s.name}).`, ask: 'Buche die notwendige Aufwertung der Verbindlichkeit und gib die Auswirkung auf das Eigenkapital an.', answer: ans, hints: [`Entstehungswert ${E(f.e0)}, Wert am Stichtag ${E(f.e1)}.`, 'Aufwandskonto an Verbindlichkeit.'], solution: [`${E(f.e1)} − ${E(f.e0)} = ${E(d)}`, step(ans)] };
   });
   const PRIVATE_GOODS = [['einen Laptop', [900, 1500]], ['eine Armbanduhr', [80, 400]], ['einen Fernseher', [400, 900]], ['ein Fahrrad', [500, 1200]], ['eine Kaffeemaschine', [120, 300]]];
@@ -403,17 +404,17 @@
       const gross = round100(r.int(30000, 39900)), net = r2(gross / 1.2), v = r2(gross - net), ans = booking(r, [['0630', net], ['2500', v]], [[s.no, gross]], { names, pool: ['0640', '3500', '7010'] });
       return { kicker: 'Buchung', lead: `Kauf eines Elektro-Pkw (0 g CO₂) bei ${s.name} (${s.no}) um ${E(gross)} inklusive 20 % USt.`, ask: 'Verbuche den Kauf.', answer: ans, hints: ['Elektro-Pkw bis € 40.000,– brutto sind vorsteuerabzugsberechtigt und NoVA-frei.'], solution: [`Netto: ${E(gross)} : 1,2 = ${E(net)}`, step(ans)] };
     }
-    const gross = round100(r.int(25000, 48000)), ans = booking(r, [['0630', gross]], [[s.no, gross]], { names, pool: ['2500', '0640', '3500'] });
+    const gross = round100(r.int(25000, 39900)), ans = booking(r, [['0630', gross]], [[s.no, gross]], { names, pool: ['2500', '0640', '3500'] });
     return { kicker: 'Buchung', lead: `Kauf eines Firmen-Pkw mit Verbrennermotor bei ${s.name} (${s.no}) um ${E(gross)} inklusive USt und NoVA.`, ask: 'Verbuche den Kauf.', answer: ans, hints: ['Beim Pkw gibt es keinen Vorsteuerabzug. Der Anschaffungswert ist der Bruttobetrag samt NoVA.'], solution: [step(ans), 'Kein Vorsteuerabzug: Die USt gehört zum Anschaffungswert.'], takeaway: 'Pkw (Verbrenner): Kaufpreis + NoVA + USt, kein Vorsteuerabzug.' };
   });
   const GWG_ITEMS = [['einen Ventilator für die Verwaltung', '0600', [300, 900]], ['ein Tablet', '0620', [700, 1400]], ['einen Bürostuhl', '0600', [400, 1300]], ['einen Drucker', '0620', [250, 1300]], ['eine Kaffeemaschine für den Pausenraum', '0600', [500, 1250]], ['einen Monitor', '0620', [300, 1250]]];
   gen('ak-gwg', 'akauf', 'GWG oder Anlage?', 1, 3, 2, (r, st) => {
-    const [what, acc, range] = r.pick(GWG_ITEMS), gross = M.kit.repeat(() => { const g = r.int(range[0], range[1]) - 0.01 * r.pick([0, 0, 1]); const n = g / 1.2; return Math.abs(n - 1000) > 15 ? { g } : null; }).g, net = r2(gross / 1.2), v = r2(gross - net), gwg = net <= 1000, pay = r.pick(['2800', '2700']);
-    const ans = booking(r, [[gwg ? '7060' : acc, net], ['2500', v]], [[pay, gross]], { pool: [gwg ? acc : '7060', '7010', '3500', pay === '2800' ? '2700' : '2800'], effect: st >= 2 ? (gwg ? '↓' : 'Ø') : undefined });
+    const [what, acc, range] = r.pick(GWG_ITEMS), gross = M.kit.repeat(() => { const g = r.int(range[0], range[1]) - 0.01 * r.pick([0, 0, 1]); const n = g / 1.2; return Math.abs(n - 1000) > 15 ? { g } : null; }).g, net = r2(gross / 1.2), v = r2(gross - net), gwg = net <= 1000, pay = r.pick(['3190', '2700', '3180']);
+    const ans = booking(r, [[gwg ? '7060' : acc, net], ['2500', v]], [[pay, gross]], { pool: [gwg ? acc : '7060', '7010', '3500', '2800', ...['3190', '2700', '3180'].filter(x => x !== pay).slice(0, 1)], effect: st >= 2 ? (gwg ? '↓' : 'Ø') : undefined });
     return {
-      kicker: 'GWG', lead: `Ein Betrieb kauft ${what} um ${E(gross)} inklusive 20 % USt und bezahlt ${pay === '2800' ? 'mit der Firmendebitkarte (Bank)' : 'bar'}. Die Nutzungsdauer beträgt mehrere Jahre. Geringwertige Wirtschaftsgüter werden sofort abgeschrieben.`,
+      kicker: 'GWG', lead: `Ein Betrieb kauft ${what} um ${E(gross)} inklusive 20 % USt und bezahlt ${{ '3190': 'mit der Firmendebitkarte', '2700': 'bar', '3180': 'mit der Firmenkreditkarte' }[pay]}. Die Nutzungsdauer beträgt mehrere Jahre. Geringwertige Wirtschaftsgüter werden sofort abgeschrieben.`,
       ask: `Verbuche den Kauf${st >= 2 ? ' und gib die Auswirkung auf das Eigenkapital an' : ''}.`, answer: ans,
-      hints: ['GWG-Grenze: Anschaffungswert bis € 1.000,– **ohne USt**.', `Netto: ${E(gross)} : 1,2 = ${E(net)}.`],
+      hints: ['GWG-Grenze: Anschaffungswert bis € 1.000,– **ohne USt**.', `Netto: ${E(gross)} : 1,2 = ${E(net)}.`, 'Kartenzahlung: zuerst gegen 3190 (Debitkarte) bzw. 3180 (Kreditkarte), noch nicht gegen die Bank.'],
       solution: [`Netto ${E(net)}: ${gwg ? 'unter' : 'über'} € 1.000,–, also ${gwg ? 'geringwertiges Wirtschaftsgut, sofort als Aufwand (7060)' : 'normales Anlagegut, wird aktiviert'}.`, step(ans)],
       takeaway: 'GWG-Grenze immer am Nettobetrag prüfen.',
     };
@@ -588,5 +589,339 @@
     return { seed, size, tasks, points: tasks.flatMap(t => t.parts).reduce((s, p) => s + p.points, 0) };
   }
 
-  return { ...E_, buildTest, ACC, eur, afaPlan, booking, r2 };
+
+  // ======== Buchungstrainer: whole cases with several documents, in the style of the book's exercises ========
+  // The account plan is the Einheitskontenrahmen with the names the book's own booking trainer uses.
+  const KONTEN = [["0110", "Patentrechte, Lizenzen"], ["0120", "Datenverarbeitungsprogramme"], ["0121", "Geringwertige Datenverarbeitungsprogramme"], ["0180", "Geleistete Anzahlungen für immaterielle Vermögensgegenstände aus Anlagevermögen"], ["0200", "Unbebaute Grundstücke"], ["0210", "Bebaute Grundstücke (Grundwert)"], ["0300", "Gebäude"], ["0400", "Maschinen"], ["0450", "Sonstige Betriebsanlagen"], ["0480", "Geringwertige Maschinen"], ["0500", "Werkzeuge"], ["0550", "Geringwertige Werkzeuge"], ["0600", "Betriebs- und Geschäftsausstattung"], ["0620", "Büromaschinen, EDV-Anlagen"], ["0630", "Pkw und Kombis"], ["0640", "Lkw"], ["0670", "Geringwertige Betriebs- und Geschäftsausstattung"], ["0672", "Geringwertige Büromaschinen, EDV-Anlagen"], ["0700", "Geleistete Anzahlungen auf Sachanlagen 20 %"], ["0710", "Anlagen in Bau"], ["0800", "Beteiligungen"], ["0930", "Festverzinsliche Wertpapiere des Anlagevermögens"], ["1000", "Bezugsverrechnung"], ["1100", "Rohstoffvorrat"], ["1200", "Vorrat bezogene Teile"], ["1210", "Weinvorrat"], ["1220", "Sektvorrat"], ["1230", "Spirituosenvorrat"], ["1240", "Sonstiger alkoholischer Getränkevorrat"], ["1250", "Vorrat Ersatzteile"], ["1251", "Milch-, Milchmischgetränkevorrat"], ["1260", "Kaffee-, Tee-Vorrat"], ["1270", "Alkoholfreier (AF) Getränkevorrat"], ["1300", "Hilfsstoffvorrat"], ["1340", "Vorrat Verpackungsmaterial"], ["1350", "Vorrat Betriebsstoffe"], ["1360", "Vorrat Heizöl"], ["1364", "Vorrat feste Brennstoffe"], ["1365", "Vorrat Schmiermittel"], ["1370", "Vorrat Reinigungsmaterial"], ["1390", "Vorrat Büromaterial"], ["1400", "Unfertige Erzeugnisse"], ["1500", "Fertige Erzeugnisse"], ["1600", "Handelswarenvorrat"], ["1610", "Tabakwarenvorrat"], ["1680", "Emballagen-Vorrat"], ["1800", "Geleistete Anzahlungen auf Vorräte 20 %"], ["1801", "Geleistete Anzahlungen auf Vorräte 10 %"], ["1802", "Geleistete Anzahlungen auf Vorräte 13 %"], ["2000", "Lieferforderungen (Forderungen aus Lieferungen und Leistungen Inland, Kundensammelkonto)"], ["2050", "Losungsverrechnung"], ["2070", "Verrechnungskonto erhaltene Anzahlungen"], ["2080", "Einzelwertberichtigungen zu Lieferford. Inland"], ["2100", "Lieferforderungen Währungsunion"], ["2130", "Einzelwertberichtigungen zu Lieferforderungen Währungsunion"], ["2150", "Lieferforderungen sonstiges Ausland"], ["2180", "Einzelwertberichtigungen zu Lieferforderungen sonstiges Ausland"], ["2250", "Forderungen aus Beteiligungserträgen"], ["2300", "Sonstige Forderungen"], ["2320", "Gegebene Darlehen"], ["2330", "Forderungen aus Darlehenszinsen"], ["2350", "Forderungen aus Wertpapierzinsen"], ["2360", "Forderungen aus Leasinggeschäften"], ["2380", "Guthaben bei Lieferanten (nicht aus Anzahlungen)"], ["2400", "Lohn- und Gehaltsvorschüsse"], ["2500", "Vorsteuer"], ["2510", "Vorsteuer aus ig. Erwerb"], ["2511", "Vorsteuer (aus geschuldeter USt)"], ["2520", "Einfuhrumsatzsteuer"], ["2620", "Aktien des Umlaufvermögens"], ["2650", "Festverzinsliche Wertpapiere des Umlaufvermögens"], ["2700", "Kassa"], ["2750", "Fremdwährungskassa"], ["2800", "Bank (Guthaben bei Kreditinstituten)"], ["2870", "Barverkehr mit Banken"], ["2880", "Forderungen Kreditkartenunternehmen"], ["2885", "Forderungen Debitkarten"], ["2890", "Schwebende Geldbewegungen"], ["2900", "Aktive Rechnungsabgrenzungsposten (ARA)"], ["3000", "Rückstellungen für Abfertigungen"], ["3010", "Rückstellungen für Pensionen"], ["3020", "Rückstellungen für Körperschaftsteuer"], ["3025", "Sonstige Steuerrückstellungen"], ["3040", "Rückstellungen für Rechts- und Beratungsaufwand"], ["3045", "Rückstellungen für Prozesskosten"], ["3050", "Rückstellungen für nicht konsumierte Urlaube"], ["3060", "Garantierückstellungen"], ["3065", "Rückstellungen für Produkthaftung"], ["3070", "Rückstellungen für Vergütungen an Mitarbeiter"], ["3075", "Rückstellungen für Jubiläumsgelder"], ["3080", "Rückstellungen für bei Kunden lagernde Emballagen"], ["3090", "Sonstige Rückstellungen"], ["3120", "Bank (Bankschuld, Verbindlichkeiten gegenüber Kreditinstituten)"], ["3130", "Barverkehr mit Banken"], ["3150", "Darlehen (von einer Bank)"], ["3160", "Verbindlichkeiten aus Darlehenszinsen (zu 3150)"], ["3180", "Verbindlichkeiten Kreditkartenunternehmen"], ["3190", "Verbindlichkeiten Debitkarten"], ["3200", "Erhaltene Anzahlungen 20 %"], ["3201", "Erhaltene Anzahlungen 10 %"], ["3202", "Erhaltene Anzahlungen 13 %"], ["3203", "Erhaltene Anzahlungen 0 %"], ["3300", "Lieferverbindlichkeiten"], ["3350", "Verrechnungskonto geleistete Anzahlungen"], ["3360", "Lieferverbindlichkeiten Währungsunion"], ["3370", "Lieferverbindlichkeiten sonstiges Ausland"], ["3500", "Umsatzsteuer"], ["3510", "Erwerbsteuer (USt aus ig. Erwerben)"], ["3520", "USt-Zahllast"], ["3540", "Verbindlichkeiten Finanzamt"], ["3570", "Verbindlichkeiten Zollamt"], ["3580", "Einbehaltene KESt"], ["3600", "Verbindlichkeiten Gesundheitskasse"], ["3610", "Verbindlichkeiten Gemeinde (Stadt)"], ["3700", "Darlehen (nicht von einer Bank)"], ["3710", "Verbindlichkeiten aus Darlehenszinsen (zu 3700)"], ["3730", "Gewinnverrechnung Kommanditist"], ["3750", "Verbindlichkeiten gegenüber Kunden (nicht aus Anzahlungen)"], ["3800", "Sonstige Verbindlichkeiten"], ["3850", "Verbindlichkeiten gegen Mitarbeiter aus der Bezugsverrechnung"], ["3900", "Passive Rechnungsabgrenzung (PRA)"], ["4000", "HW-Erlöse"], ["4001", "Handelswarenerlöse 10 %"], ["4002", "Handelswarenerlöse 13 %"], ["4010", "Erlöse aus ig. Lieferungen"], ["4015", "Exporterlöse"], ["4050", "Frühstücksspeisenerlöse"], ["4060", "Frühstücksgetränkeerlöse"], ["4100", "Fertigerzeugniserlöse 20 %"], ["4110", "Weinerlöse"], ["4120", "Sekterlöse"], ["4130", "Spirituosenerlöse"], ["4140", "Sonstige alkoholische Getränkeerlöse"], ["4150", "Speiseeiserlöse"], ["4151", "Milch-, Milchmischgetränke-, Kakaoerlöse"], ["4160", "Kaffee-, Tee-Erlöse"], ["4170", "Alkoholfreie (AF) Getränkeerlöse"], ["4200", "Logiserlöse"], ["4300", "Gästetelefonerlöse"], ["4310", "Gästewäscheerlöse (Reinigung)"], ["4320", "Garagenerlöse"], ["4340", "Tabakwarenerlöse"], ["4370", "Veranstaltungserlöse"], ["4380", "Sonstige Nebenerlöse"], ["4400", "Erlösberichtigungen 20 %"], ["4401", "Erlösberichtigungen 10 %"], ["4402", "Erlösberichtigungen 13 %"], ["4403", "Erlösberichtigungen 0 %"], ["4405", "Erlösberichtigungen ig. Lieferungen"], ["4406", "Erlösberichtigungen Export"], ["4410", "Kundenskonti 20 %"], ["4411", "Kundenskonti 10 %"], ["4412", "Kundenskonti 13 %"], ["4415", "Kundenskonti aus ig. Lieferungen"], ["4416", "Kundenskonti Export"], ["4500", "Bestandsveränderungen"], ["4580", "Aktivierte Eigenleistungen"], ["4600", "Erlöse aus dem Abgang von Anlagen 20 %"], ["4601", "Erlöse aus dem Abgang von Anlagen 0 %"], ["4610", "Versicherungsentschädigungen für Anlagenabgänge"], ["4630", "Erträge aus dem Abgang von Anlagen"], ["4660", "Erträge aus der Zuschreibung zum Anlagevermögen"], ["4700", "Erträge aus der Auflösung von Rückstellungen"], ["4800", "Personalbeherbergungserlöse"], ["4801", "Personalverpflegungserlöse Speisen"], ["4802", "Personalverpflegungserlöse Getränke"], ["4810", "Mieterträge (Pachterträge)"], ["4820", "Provisionserträge"], ["4840", "Fremdwährungskursgewinne"], ["4850", "Erträge aus Konventionalstrafen"], ["4860", "Versicherungsentschädigungen (sonstige)"], ["4870", "Erträge a. d. Auflösung von WB zu Forderungen"], ["4880", "Übrige betriebliche Erträge 20 %"], ["4881", "Übrige betriebliche Erträge 10 %"], ["4882", "Übrige betriebliche Erträge 13 %"], ["4883", "Übrige betriebliche Erträge 0 %"], ["4890", "Mahnspesenvergütung"], ["4900", "Eigenverbrauch 20 %"], ["4901", "Eigenverbrauch 10 %"], ["4902", "Eigenverbrauch 13 %"], ["4903", "Eigenverbrauch 0 %"], ["5000", "HW-Einsatz"], ["5001", "Handelswareneinsatz 10 %"], ["5002", "Handelswareneinsatz 13 %"], ["5080", "Emballagen-Einsatz"], ["5100", "Rohstoffverbrauch (-einsatz)"], ["5200", "Verbrauch von bezogenen Teilen"], ["5210", "Weineinsatz (-verbrauch)"], ["5220", "Sekteinsatz (-verbrauch)"], ["5230", "Spirituoseneinsatz (-verbrauch)"], ["5240", "Sonstiger alkoholischer Getränkeeinsatz (-verbrauch)"], ["5251", "Milch-, Milchmischgetränkeeinsatz (-verbrauch)"], ["5260", "Kaffee-, Tee-Einsatz (-verbrauch)"], ["5270", "Alkoholfreier (AF) Getränkeeinsatz (-verbrauch)"], ["5290", "Tabakwareneinsatz (-verbrauch)"], ["5300", "Hilfsstoffverbrauch"], ["5310", "Hotel- und Gaststättenbedarf"], ["5340", "Verpackungsmaterialverbrauch"], ["5400", "Betriebsstoffverbrauch"], ["5410", "Schmiermittelverbrauch"], ["5420", "Reparaturmaterialverbrauch"], ["5450", "Reinigungsmaterialverbrauch"], ["5500", "Verbrauch von Werkzeugen, Erzeugungshilfsmitteln"], ["5510", "Ersatzteileverbrauch"], ["5600", "Bezugskosten"], ["5880", "Lieferantenskonti auf Wareneinkauf 20 %"], ["5881", "Lieferantenskonti auf Wareneinkauf 10 %"], ["5882", "Lieferantenskonti auf Wareneinkauf 13 %"], ["5884", "Lieferantenskonti Anlagenkäufe"], ["5885", "Lieferantenskonti aus ig. Erwerben"], ["5886", "Lieferantenskonti Import"], ["5890", "Umsatzbonus auf Wareneinkauf 20 %"], ["5891", "Umsatzbonus auf Wareneinkauf 10 %"], ["5892", "Umsatzbonus auf Wareneinkauf 13 %"], ["5910", "Wareneinsatz Personalverpflegung"], ["6000", "Löhne"], ["6001", "Überstunden Arbeiter"], ["6020", "Sonderzahlungen Arbeiter"], ["6050", "Zuweisungen an die Urlaubsrückstellung Arbeiter"], ["6100", "Lehrlingseinkommen Arbeiter"], ["6120", "Sonderzahlungen Arbeiterlehrlinge"], ["6200", "Gehälter"], ["6201", "Überstunden Angestellte"], ["6220", "Sonderzahlungen Angestellte"], ["6250", "Zuweisungen an die Urlaubsrückstellung Angestellte"], ["6300", "Lehrlingsentschädigungen Angestellte"], ["6320", "Sonderzahlungen Angestelltenlehrlinge"], ["6390", "Bezüge freie Dienstnehmer"], ["6400", "Abfertigungsaufwand Arbeiter"], ["6420", "Abfertigungsaufwand Angestellte"], ["6430", "Zuweisungen an die Abfertigungsrückstellung"], ["6440", "Aufwand für Betriebliche Vorsorgekassen Arbeiter"], ["6441", "Aufwand für Betriebliche Vorsorgekassen Angestellte"], ["6460", "Zuweisungen an die Pensionsrückstellung"], ["6500", "Gesetzlicher Sozialaufwand Arbeiter"], ["6560", "Gesetzlicher Sozialaufwand Angestellte"], ["6600", "Dienstgeberbeitrag Arbeiter"], ["6610", "Zuschlag zum DB Arbeiter"], ["6620", "Kommunalsteuer Arbeiter"], ["6630", "Wiener Dienstgeberabgabe Arbeiter"], ["6660", "Dienstgeberbeitrag Angestellte"], ["6670", "Zuschlag zum DB Angestellte"], ["6680", "Kommunalsteuer Angestellte"], ["6690", "Wiener Dienstgeberabgabe Angestellte"], ["6700", "Freiwilliger Sozialaufwand"], ["6710", "Sachbezüge Personal"], ["6720", "Aufwand für Dienstwohnungen"], ["7010", "Abschreibungen von Sachanlagen"], ["7040", "Außerplanmäßige Abschreibungen von Anlagevermögen"], ["7060", "Abschreibungen geringwertiger Wirtschaftsgüter"], ["7070", "Außerplanmäßige Abschreibungen von Umlaufvermögen"], ["7100", "Grundsteuer"], ["7130", "Vergnügungssteuer"], ["7150", "Tourismusabgabe"], ["7151", "AKM-Beitrag"], ["7180", "Gebühren"], ["7190", "Sonstige Abgaben"], ["7200", "Instandhaltung durch Dritte"], ["7210", "Reinigung durch Dritte"], ["7220", "Entsorgungsaufwand"], ["7240", "Heizölverbrauch"], ["7250", "Treibstoffverbrauch"], ["7260", "Gasverbrauch"], ["7270", "Stromverbrauch"], ["7280", "Heizmaterialverbrauch (feste Brennstoffe)"], ["7300", "Ausgangsfrachten 20 %"], ["7301", "Ausgangsfrachten 0%"], ["7310", "Paketgebühren 20%"], ["7311", "Paketgebühren 0%"], ["7320", "Pkw- und Kombi-Betriebsaufwand"], ["7321", "Motorbezogene Versicherungssteuer Pkw und Kombis"], ["7325", "Versicherungsaufwand Pkw und Kombis"], ["7326", "Parkgebühren, Straßenmaut Pkw und Kombis"], ["7330", "Lkw-Betriebsaufwand"], ["7331", "Motorbezogene Versicherungssteuer Lkw"], ["7332", "Kraftfahrzeugsteuer Lkw"], ["7335", "Versicherungsaufwand Lkw"], ["7336", "Parkgebühren, Straßenmaut Lkw"], ["7340", "Bahn- und Autobuskosten Inlandsreisen"], ["7341", "Flugkosten Inlandsreisen"], ["7342", "Taxikosten Inlandsreisen"], ["7343", "Sonstige Fahrtkosten Inlandsreisen"], ["7344", "Reise-Nebenkosten Inland"], ["7345", "Kilometergeld Inland"], ["7360", "Tagesgelder Inland"], ["7361", "Verpflegungsgelder Inlandsreisen 20 %"], ["7362", "Verpflegungsgelder Inlandsreisen 10 %"], ["7364", "Nächtigungsgelder Inland"], ["7365", "Tagesgelder Ausland"], ["7366", "Nächtigungsgelder Ausland"], ["7380", "Telefon- und Internetgebühren"], ["7385", "Portogebühren"], ["7400", "Mietaufwand (Pachtaufwand)"], ["7440", "Leasingaufwand"], ["7450", "Leasingaufwand Pkw und Kombis"], ["7460", "Leasingaufwand Lkw"], ["7480", "Lizenzaufwand"], ["7540", "Provisionen an Dritte (Nicht-Arbeitnehmer; Vertriebsaufwand für Handelsvertreter)"], ["7600", "Büromaterial (Büroaufwand, Bürobedarf)"], ["7610", "Kopien und sonstige Druckkosten"], ["7630", "Fachliteratur und Zeitungen"], ["7650", "Werbeaufwand"], ["7660", "Aufwand für Geschäftsanbahnung 20 %"], ["7661", "Aufwand für Geschäftsanbahnung 10 %"], ["7662", "Aufwand für Geschäftsanbahnungen 0 %"], ["7663", "Nicht absetzbarer Aufwand für Geschäftsanbahnung 20 %"], ["7664", "Nicht absetzbarer Aufwand für Geschäftsanbahnung 10 %"], ["7665", "Nicht absetzbarer Aufwand für Geschäftsanbahnung 0 %"], ["7680", "Spenden und Trinkgelder"], ["7700", "Versicherungsaufwand"], ["7710", "Haftpflichtversicherungen (ohne Kraftfahrzeuge)"], ["7740", "Versicherungsbeiträge an die Sozialversicherungsanstalt der Selbständigen"], ["7750", "Rechts- und Beratungsaufwand"], ["7770", "Aufwand für Aus- und Fortbildung"], ["7780", "Kammerumlage"], ["7790", "Spesen des Geldverkehrs"], ["7791", "Sonstige Bankspesen"], ["7792", "Provisionen, Gebühren Kredit- und Debitkarten"], ["7800", "Abschreibungen von Vorräten"], ["7802", "Abschreibungen von Forderungen 20 %"], ["7803", "Abschreibungen von Forderungen 10 %"], ["7804", "Abschreibungen von Forderungen 13 %"], ["7805", "Abschreibungen von Forderungen 0 %"], ["7806", "Zuweisungen an WB zu Forderungen"], ["7810", "Zuweisungen an die Garantierückstellung"], ["7811", "Konventionalstrafen"], ["7815", "Fremdwährungskursverluste"], ["7818", "Rundungsdifferenzen"], ["7819", "Sonstige Schadensfälle"], ["7820", "Buchwert abgegangener Anlagen"], ["7830", "Verluste aus dem Abgang von Anlagen"], ["7840", "Aufwand für Vorperioden"], ["7850", "Übrige betriebliche Aufwendungen 20 %"], ["7851", "Übrige betriebliche Aufwendungen 10 %"], ["7852", "Übrige betriebliche Aufwendungen 0 %"], ["7880", "Lieferantenskonti auf sonstige betriebliche Aufwendungen"], ["8010", "Erträge aus Beteiligungen"], ["8030", "Steuerpflichtige Zinsenerträge für Wertpapiere des Anlagevermögens"], ["8031", "Endbesteuerte Zinsenerträge für Wertpapiere des Anlagevermögens"], ["8035", "Steuerpflichtige Dividendenerträge"], ["8036", "Endbesteuerte Dividendenerträge"], ["8050", "Zinsenerträge aus Bankguthaben"], ["8051", "Zinsenerträge aus gewährten Darlehen"], ["8052", "Steuerpflichtige Zinsenerträge für Wertpapiere des Umlaufvermögens"], ["8053", "Endbesteuerte Zinsenerträge für Wertpapiere des Umlaufvermögens"], ["8055", "Verzugszinsenerträge"], ["8056", "Sonstige Zinsenerträge 20 %"], ["8057", "Sonstige Zinsenerträge 10 %"], ["8170", "Erträge aus der Zuschreibung zu Finanzanlagen"], ["8180", "Erträge aus der Zuschreibung zu Wertpapieren des Umlaufvermögens"], ["8200", "Abschreibungen auf Beteiligungen"], ["8270", "Abschreibungen auf sonstige Finanzanlagen"], ["8271", "Abschreibungen auf Wertpapiere des Umlaufvermögens"], ["8310", "Zinsenaufwand für Bankkredite"], ["8311", "Sonstiger Aufwand für Bankkredite"], ["8315", "Zinsenaufwand für Darlehen"], ["8320", "Verzugszinsenaufwand"], ["8321", "Mahnspesen"], ["8325", "Zinsenaufwand für Lieferantenkredite 20 %"], ["8326", "Zinsenaufwand für Lieferantenkredite 10 %"], ["8500", "Körperschaftsteuer"], ["8510", "Körperschaftsteuer Vorjahre"], ["8520", "Erträge aus der Auflösung von Körperschaftsteuerrückstellungen"], ["9000", "Kapital"], ["9050", "Variables Kapital … (Vollhafter)"], ["9090", "Ausstehende Einlage … (Vollhafter)"], ["9100", "Einlage Kommanditist"], ["9150", "Ausstehende Einlage Kommanditist"], ["9160", "Verlustanteil Kommanditist"], ["9600", "Privat"], ["9610", "Privatsteuern"], ["9800", "Eröffnungsbilanzkonto (EBK)"], ["9850", "Schlussbilanzkonto (SBK)"], ["9890", "Gewinn- und Verlustkonto (GuV)"], ["9900", "Zwischenkonto (für EDV-Sammelbuchungen)"]];
+  const KONTO = new Map(KONTEN);
+  const kontoName = (no, names = {}) => names[no] || KONTO.get(no) || ACC[no] || '';
+  const kontoLabel = (no, names = {}) => `${no} ${kontoName(no, names)}`.trim();
+  const fold = s => String(s ?? '').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z0-9]+/g, ' ').trim();
+  // Account search for the input field: number prefix first, then words of the name.
+  function searchKonten(query, names = {}, limit = 8) {
+    const q = fold(query), all = [...Object.entries(names), ...KONTEN.filter(([no]) => !names[no])];
+    if (!q) return [];
+    const digits = /^\d+$/.test(q.replace(/ /g, '')) ? q.replace(/ /g, '') : '';
+    const words = q.split(' ').filter(Boolean);
+    const scored = [];
+    for (const [no, name] of all) {
+      const n = fold(name);
+      let score = -1;
+      if (digits) { if (no.startsWith(digits)) score = 100 - no.length - (names[no] ? -5 : 0); }
+      else if (words.every(w => n.includes(w) || no.startsWith(w))) score = (n.startsWith(words[0]) ? 50 : 20) + (names[no] ? 10 : 0) - n.length / 100;
+      if (score >= 0) scored.push({ no, name, score });
+    }
+    return scored.sort((a, b) => b.score - a.score || a.no.localeCompare(b.no)).slice(0, limit);
+  }
+  // Turns what was typed into an account number: "0400", "0400 Maschinen", "maschinen" or a supplier name.
+  function resolveAcc(text, names = {}) {
+    const t = String(text ?? '').trim();
+    if (!t) return null;
+    const m = t.match(/^(\d{4,5})\b/);
+    if (m) return m[1];
+    const q = fold(t), all = [...Object.entries(names), ...KONTEN];
+    const exact = all.find(([, name]) => fold(name) === q);
+    if (exact) return exact[0];
+    // A name that starts like an account counts as that account (shortest match first), like picking the top suggestion.
+    const hits = searchKonten(t, names, 2);
+    return hits[0] && (hits.length === 1 || hits[0].score >= 40) ? hits[0].no : null;
+  }
+  const parseAmount = text => { const v = M.parseNumber(text); return v.length ? v[0] : null; };
+  const same = (a, b) => a !== null && Math.abs(a - b) < 0.005;
+  // Grades one booking field by field. Lines may be entered in any order on each side; split amounts are not needed here.
+  function gradeBooking(sol, entry, names = {}) {
+    const rows = entry.rows || [], out = rows.map(() => ({ sa: '', sb: '', ha: '', hb: '' })), msgs = [];
+    if (sol.none || entry.none) {
+      const typed = rows.some(r => [r.sa, r.sb, r.ha, r.hb].some(v => String(v ?? '').trim()));
+      const ok = !!sol.none && !!entry.none && !typed;
+      if (entry.none && !sol.none) msgs.push('Hier ist sehr wohl eine Buchung nötig.');
+      if (sol.none && !entry.none && typed) msgs.push('Prüf noch einmal, ob hier überhaupt gebucht werden muss.');
+      return { fields: out, effect: '', none: entry.none ? (ok ? 'ok' : 'bad') : '', complete: ok, msgs };
+    }
+    let complete = true;
+    for (const [side, ka, kb, other] of [['soll', 'sa', 'sb', 'haben'], ['haben', 'ha', 'hb', 'soll']]) {
+      const lines = sol[side], usedAcc = new Set(), usedAmt = new Set();
+      const parsed = rows.map(r => ({ acc: resolveAcc(r[ka], names), accText: String(r[ka] ?? '').trim(), amt: parseAmount(r[kb]), amtText: String(r[kb] ?? '').trim() }));
+      // First pass: account and amount both right, so a correct line is never stolen by a half-right one.
+      parsed.forEach((p, i) => { const j = lines.findIndex((l, k) => !usedAcc.has(k) && l.acc === p.acc && same(p.amt, l.amt)); if (j >= 0) { usedAcc.add(j); usedAmt.add(j); out[i][ka] = 'ok'; out[i][kb] = 'ok'; p.done = true; } });
+      parsed.forEach((p, i) => { if (p.done || !p.acc) return; const j = lines.findIndex((l, k) => !usedAcc.has(k) && l.acc === p.acc); if (j >= 0) { usedAcc.add(j); out[i][ka] = 'ok'; p.line = j; } });
+      parsed.forEach((p, i) => {
+        if (p.done) return;
+        if (p.accText && out[i][ka] !== 'ok') {
+          out[i][ka] = 'bad';
+          if (p.acc && sol[other].some(l => l.acc === p.acc)) msgs.push(`${kontoLabel(p.acc, names)} gehört auf die andere Seite: Soll und Haben vertauscht?`);
+          else if (p.acc === '3300' && lines.some(l => /^33\d{3}$/.test(l.acc))) msgs.push('Nimm das Personenkonto des Lieferanten (die fünfstellige Nummer im Beleg), nicht das Sammelkonto 3300.');
+          else if (p.acc === '2800' && lines.some(l => l.acc === '3190' || l.acc === '3180')) msgs.push('Bei Zahlung mit Karte wird zuerst die Verbindlichkeit gegenüber dem Kartenunternehmen gebucht: 3190 (Debitkarte) oder 3180 (Kreditkarte).');
+          else if (['7010', '7040', '7060'].includes(p.acc) && lines.some(l => ['7010', '7040', '7060'].includes(l.acc))) msgs.push('Falsches Abschreibungskonto: 7010 planmäßig, 7040 außerplanmäßig, 7060 GWG.');
+          else if (p.acc && /^7/.test(p.acc) && lines.some(l => /^0/.test(l.acc)) && !lines.some(l => /^7/.test(l.acc))) msgs.push('Anschaffungskosten und Nebenkosten werden aktiviert (Kontenklasse 0), nicht als Aufwand gebucht.');
+          else if (p.acc && /^0/.test(p.acc) && lines.some(l => l.acc === '7060')) msgs.push('Unter € 1.000,– netto ist es ein geringwertiges Wirtschaftsgut.');
+          else if (p.acc && lines.some(l => l.acc === '7060') === false && lines.some(l => /^0/.test(l.acc)) && p.acc === '7060') msgs.push('Über € 1.000,– netto: kein GWG, das Anlagegut wird aktiviert.');
+          else if (!p.acc) msgs.push(`„${p.accText}“ ist kein Konto aus dem Kontenplan.`);
+        }
+        if (p.amtText) {
+          const target = p.line !== undefined ? [lines[p.line]] : lines.filter((l, k) => !usedAmt.has(k));
+          const hit = p.amt !== null && target.find(l => same(p.amt, l.amt));
+          if (hit && p.line !== undefined) { out[i][kb] = 'ok'; usedAmt.add(p.line); }
+          else if (hit && !p.accText) out[i][kb] = 'ok';
+          else {
+            out[i][kb] = 'bad';
+            const want = p.line !== undefined ? lines[p.line].amt : null;
+            if (want !== null && p.amt !== null && same(p.amt, want * 1.2)) msgs.push('Das ist der Bruttobetrag. Hier gehört der Nettobetrag hin.');
+            else if (want !== null && p.amt !== null && same(p.amt * 1.2, want)) msgs.push('Hier gehört der Bruttobetrag (mit USt) hin.');
+            else if (p.amt === null) msgs.push(`„${p.amtText}“ ist kein Betrag.`);
+          }
+        }
+      });
+      lines.forEach((l, k) => { if (!(usedAcc.has(k) && usedAmt.has(k))) complete = false; });
+      if (parsed.some((p, i) => (p.accText || p.amtText) && !(out[i][ka] === 'ok' && out[i][kb] === 'ok'))) complete = false;
+    }
+    let effect = '';
+    if (sol.effect) { effect = !entry.effect ? '' : entry.effect === sol.effect ? 'ok' : 'bad'; if (effect !== 'ok') complete = false; if (effect === 'bad') msgs.push('Die Auswirkung auf das Eigenkapital stimmt nicht.'); }
+    return { fields: out, effect, none: '', complete, msgs: [...new Set(msgs)] };
+  }
+  // ---- Case building blocks ----
+  const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const d = (day, month, year = 2025) => `${day}.${month}.${year}`;
+  function dateAfter(r, [day, month], minDays, maxDays) {
+    let dd = day + r.int(minDays, maxDays), mm = month;
+    while (dd > MONTH_DAYS[mm - 1]) { dd -= MONTH_DAYS[mm - 1]; mm++; }
+    return [dd, Math.min(12, mm)];
+  }
+  const bk = (soll, haben, o = {}) => ({ label: o.label || '', soll: soll.map(([acc, amt]) => ({ acc, amt: r2(amt) })), haben: haben.map(([acc, amt]) => ({ acc, amt: r2(amt) })), effect: o.effect === undefined ? null : o.effect, hint: o.hint || [], calc: o.calc || [] });
+  const none = (o = {}) => ({ label: o.label || '', none: true, soll: [], haben: [], effect: null, hint: o.hint || [], calc: o.calc || [] });
+  const ROLE = {
+    machine: ['Maschinenfabrik Hainzl GmbH', 'Kaltenbrunner Industrietechnik GmbH', 'Anlagenbau Gruber AG', 'Steiner Maschinenbau GmbH', 'Technik Huber KG'],
+    montage: ['Montagebau Kern OG', 'Elektro Pichler GmbH', 'Installationen Wallner GmbH', 'Haustechnik Brunner e. U.'],
+    bau: ['Baumeister Lechner GmbH', 'Hochbau Wiesinger GmbH', 'Bauunternehmen Pölzl KG'],
+    transport: ['Spedition Weiss GmbH', 'Transporte Haider KG', 'Logistik Fink GmbH'],
+    office: ['Bürowelt Rauch GmbH', 'EDV-Systeme Koller GmbH', 'Ladenbau Wimmer GmbH', 'Sicherheitstechnik Reiter GmbH', 'IT-Service Moser e. U.'],
+    cars: ['Autohaus Mayrhofer GmbH', 'Autohaus Grabner KG', 'Nutzfahrzeuge Brandl GmbH'],
+    abroad: ['Pacific Outdoor Supply Inc.', 'Northline Trading Corp.', 'Lakeside Gear LLC'],
+    safe: ['Sicherheitstechnik Reiter GmbH', 'Tresorbau Wallisch KG'],
+    shop: ['Ladenbau Wimmer GmbH', 'Objekteinrichtung Lackner GmbH', 'Büromöbel Hofbauer KG'],
+  };
+  function caseKit(r) {
+    const names = {}, usedNames = new Set();
+    const sup = role => { const name = r.pick(ROLE[role].filter(n => !usedNames.has(n))); usedNames.add(name); return supplier(r, names, name); };
+    let e = r.int(120, 600), b = r.int(20, 180), s = r.int(300, 900), k = r.int(40, 300);
+    const nr = { E: () => `E ${e += r.int(3, 40)}`, B: () => `B ${b += r.int(2, 14)}`, S: () => `S ${s += r.int(5, 60)}`, K: () => `K ${k += r.int(2, 20)}` };
+    return { names, sup, nr };
+  }
+  const afaCalc = (aw, nd, plan, inb) => [`Jahresabschreibung: ${E(aw)} : ${nd} = ${E(plan.annual)}`, `Inbetriebnahme ${inb}: ${plan.half ? 'zweite Jahreshälfte, im ersten und letzten Jahr nur die halbe Abschreibung' : 'erste Jahreshälfte, schon im ersten Jahr die ganze Abschreibung'}`];
+  const afaBooking = (acc, row, o = {}) => bk([['7010', row.afa]], [[acc, row.afa]], { effect: '↓', ...o });
+  const skontoBookings = (supNo, gross, pct, assetAcc) => {
+    const skB = r2(gross * pct / 100), pay = r2(gross - skB), skN = r2(skB / 1.2), skV = r2(skB - skN);
+    return { pay, skB, skN, skV, list: [
+      bk([[supNo, pay]], [['2800', pay]], { label: 'Zahlung', effect: 'Ø', hint: ['Zuerst die Überweisung: Lieferant an Bank, mit dem überwiesenen Betrag.'] }),
+      bk([[supNo, skB]], [[assetAcc, skN], ['2500', skV]], { label: 'Skonto', effect: 'Ø', hint: ['Der Skonto mindert den Anschaffungswert und die Vorsteuer.', `Skonto brutto ${E(skB)} = netto ${E(skN)} + Vorsteuer ${E(skV)}.`], calc: [`Skonto: ${pct} % von ${E(gross)} = ${E(skB)}`, `davon netto ${E(skB)} : 1,2 = ${E(skN)}, Vorsteuer ${E(skV)}`] }),
+    ] };
+  };
+  const invoice = (acc, net, supNo, o = {}) => bk([[acc, net], ['2500', r2(net * 0.2)]], [[supNo, r2(net * 1.2)]], { effect: 'Ø', hint: ['Anlagenkonto und Vorsteuer an das Personenkonto des Lieferanten.'], ...o });
+  const COMPANY = ['Weingut Hollerer KG', 'Bäckerei Hörmann GmbH', 'Brauerei Zwettler OG', 'Druckerei Ferstl GmbH', 'Tischlerei Aigner e. U.', 'Molkerei Hochreiter GmbH', 'Konditorei Lindner OG', 'Kaffeerösterei Bauer e. U.'];
+  const MACHINES = [['eine Abfüllanlage', 'Abfüllanlage'], ['einen Etagenbackofen', 'Backofen'], ['eine Druckmaschine', 'Druckmaschine'], ['eine CNC-Fräse', 'CNC-Fräse'], ['eine Kaffeeröstmaschine', 'Röstmaschine'], ['eine Verpackungsanlage', 'Verpackungsanlage'], ['eine Etikettiermaschine', 'Etikettiermaschine']];
+  const BGA = [['einer Empfangstheke', 'Empfangstheke', 'shop'], ['eines Regalsystems', 'Regalsystem', 'shop'], ['einer Kühlvitrine', 'Kühlvitrine', 'shop'], ['eines Besprechungstisches mit Stühlen', 'Besprechungstisch', 'shop'], ['eines Wandtresors', 'Wandtresor', 'safe']];
+  const EDV = [['einen Server', 'Server'], ['ein Kassensystem', 'Kassensystem'], ['einen Großformatdrucker', 'Großformatdrucker']];
+  // [accusative, short name, GWG account, gross price range, genitive]
+  const SMALL = [['einen Ventilator für das Büro', 'Ventilator', '0670', [380, 900], 'eines Ventilators für das Büro'], ['ein Tablet', 'Tablet', '0672', [520, 1450], 'eines Tablets'], ['einen Bürostuhl', 'Bürostuhl', '0670', [420, 1380], 'eines Bürostuhls'], ['einen Monitor', 'Monitor', '0672', [260, 1300], 'eines Monitors'], ['einen Laserdrucker', 'Laserdrucker', '0672', [300, 1350], 'eines Laserdruckers'], ['eine Kaffeemaschine für den Pausenraum', 'Kaffeemaschine', '0670', [500, 1320], 'einer Kaffeemaschine für den Pausenraum']];
+  const net100 = (r, a, b) => round100(r.int(a, b)), net10 = (r, a, b) => round10(r.int(a, b));
+
+  const TEMPLATES = [];
+  const tpl = (id, title, sub, fig, make) => TEMPLATES.push({ id, title, sub, fig, make });
+
+  tpl('kauf', 'Anlagenkauf verbuchen, Abschreibung berechnen und verbuchen', 'Kauf, Montage, Skonto und Abschreibung bis zum Erinnerungseuro', 'akauf', r => {
+    const { names, sup, nr } = caseKit(r), company = r.pick(COMPANY), [mName, mShort] = r.pick(MACHINES), acc = '0400';
+    const A = sup('machine'), B = sup('montage'), C = sup('bau'), N = net100(r, 18000, 90000), M2 = net10(r, 900, 3900), K = r.int(600, 2400), G = r2(K * 1.2), nd = r.pick([5, 6, 8, 10]), keep = r.chance(0.7);
+    const inv = [r.int(3, 26), r.int(1, 4)], inb = dateAfter(r, inv, 5, 20), mont = inb, maur = dateAfter(r, inb, 1, 6), payA = dateAfter(r, maur, 3, 12), payB = dateAfter(r, payA, 2, 9);
+    const eA = nr.E(), eB = nr.E(), eC = nr.E(), pct = r.pick([2, 3]), sk = skontoBookings(A.no, N * 1.2, pct, acc), aw = r2(N + M2 + K - sk.skN), plan = afaPlan(aw, nd, inb[1], { keepEuro: keep }), last = plan.rows.at(-1);
+    const years = [plan.rows[0], plan.rows[2], last].filter((x, i, a) => x && a.indexOf(x) === i);
+    const steps = [
+      { date: d(...inv), beleg: eA, text: `${A.name} schickt die Rechnung über ${mName}: ${E(N)} + ${E(N * 0.2)} USt = ${E(N * 1.2)}. Die Anlage wird frei Haus geliefert und am ${d(...inb)} in Betrieb genommen.`, bookings: [invoice(acc, N, A.no)] },
+      { date: d(...mont), beleg: eB, text: `Rechnung der ${B.name} (${B.no}) über die Installation: ${E(M2)} + ${E(M2 * 0.2)} USt = ${E(M2 * 1.2)}.`, bookings: [invoice(acc, M2, B.no, { hint: ['Installation und Aufstellung sind Nebenkosten: Sie gehören zum Anschaffungswert.'] })] },
+      { date: d(...maur), beleg: eC, text: `Rechnung der ${C.name} (${C.no}) über Maurerarbeiten von ${E(G)} (inkl. 20 % USt), die für die Aufstellung nötig waren.`, bookings: [invoice(acc, K, C.no, { hint: [`Netto = ${E(G)} : 1,2 = ${E(K)}.`, 'Auch diese Kosten sind nötig, um die Anlage betriebsbereit zu machen.'], calc: [`${E(G)} : 1,2 = ${E(K)}, Vorsteuer ${E(G - K)}`] })] },
+      { date: d(...payA), beleg: nr.B(), text: `Überweisung von ${E(sk.pay)} an ${A.name} zum Ausgleich der ${eA} abzüglich ${pct} % Skonto.`, bookings: sk.list },
+      { date: d(...payB), beleg: nr.B(), text: `Ausgleich der ${eB} der ${B.name} durch Banküberweisung.`, bookings: [bk([[B.no, M2 * 1.2]], [['2800', M2 * 1.2]], { effect: 'Ø' })] },
+      { info: `Die Nutzungsdauer der Anlage beträgt ${nd} Jahre, lineare Abschreibung. ${keep ? `Am Ende der Nutzungsdauer ist die Anlage weiterhin gebrauchsfähig: Abschreibung auf den Erinnerungseuro. Sie scheidet Ende ${last.year + 1} aus.` : 'Sie scheidet am Ende der Nutzungsdauer aus dem Betrieb aus.'}`, calc: [`Anschaffungswert: ${E(N)} + ${E(M2)} + ${E(K)} − ${E(sk.skN)} = ${E(aw)}`] },
+      ...years.map((row, i) => ({ date: `31.12.${row.year}`, bookings: [afaBooking(acc, row, { hint: i === 0 ? [`Anschaffungswert = Kaufpreis + Installation + Maurerarbeiten − Skonto (alles netto) = ${E(aw)}.`, `Jahresabschreibung ${E(plan.annual)}.`] : row === last ? [keep ? 'Im letzten Jahr bleibt € 1,– als Erinnerungswert stehen.' : 'Im letzten Jahr wird der Rest-Buchwert abgeschrieben.'] : [`Jahresabschreibung ${E(plan.annual)}.`], calc: i === 0 ? afaCalc(aw, nd, plan, d(...inb)) : [`Buchwert davor ${E(row.bw + row.afa)}, Abschreibung ${E(row.afa)}`] })] })),
+      ...(keep ? [{ date: `31.12.${last.year + 1}`, text: 'Die Anlage scheidet aus dem Betrieb aus.', bookings: [bk([['7010', 1]], [[acc, 1]], { effect: '↓', hint: ['Jetzt wird der Erinnerungseuro abgeschrieben.'] })] }] : []),
+    ];
+    return { title: 'Anlagenkauf verbuchen, Abschreibung berechnen und verbuchen, Erfolgsauswirkung', company, intro: `${company} bestellt ${mName} bei ${A.name} (${A.no}) um ${E(N)} + ${E(N * 0.2)} USt = ${E(N * 1.2)}.`, names, steps };
+  });
+
+  tpl('zwei', 'Zwei Anlagenkäufe in einem Geschäftsjahr', 'Ausstattung und Maschine mit Transport, Skonto und drei Jahren Abschreibung', 'av', r => {
+    const { names, sup, nr } = caseKit(r), company = r.pick(['Haus & Heim-Baumarkt OG', 'Gartencenter Wagner KG', 'Sportfachhandel Leitner GmbH', 'Elektrohandel Fuchs e. U.']);
+    const [bName, bShort, bRole] = r.pick(BGA), [mName, mShort] = r.pick([['eines Kompressors', 'Kompressor'], ['einer Hebebühne', 'Hebebühne'], ['einer Folienschweißmaschine', 'Schweißmaschine'], ['einer Teigknetmaschine', 'Knetmaschine']]);
+    const S1 = sup(bRole), S2 = sup('machine'), T = sup('transport');
+    const n1 = net10(r, 1100, 6800), nd1 = r.pick([8, 10]), d1 = [r.int(2, 26), r.int(3, 5)];
+    const n2 = net100(r, 6000, 24000), nd2 = r.pick([5, 6, 8]), d2 = [r.int(2, 26), r.int(7, 9)], inb2 = dateAfter(r, d2, 1, 6), tr = net10(r, 90, 380), dT = dateAfter(r, inb2, 1, 8), pay2 = dateAfter(r, dT, 2, 8), pay1 = dateAfter(r, d1, 3, 10);
+    const e1 = nr.E(), pct = 3, sk = skontoBookings(S2.no, n2 * 1.2, pct, '0400');
+    const aw1 = n1, aw2 = r2(n2 + tr - sk.skN), p1 = afaPlan(aw1, nd1, d1[1]), p2 = afaPlan(aw2, nd2, inb2[1]);
+    const e2 = nr.E(), eT = nr.E();
+    return {
+      title: 'Anlagenkauf verbuchen, Abschreibung berechnen und verbuchen, Erfolgsauswirkung', company, intro: `${company} kauft im Jahr 2025 unter anderem folgende Anlagegegenstände:`, names,
+      steps: [
+        { date: d(...d1), beleg: e1, text: `Kauf ${bName} bei ${S1.name} (${S1.no}) um ${E(n1)} + ${E(n1 * 0.2)} USt = ${E(n1 * 1.2)}, sofortige Inbetriebnahme, Nutzungsdauer ${nd1} Jahre, Abschreibung auf den Erinnerungseuro. Zahlung zehn Tage ohne Abzug.`, bookings: [invoice('0600', n1, S1.no)] },
+        { date: d(...pay1), beleg: nr.B(), text: `Überweisung von ${E(n1 * 1.2)} an ${S1.name} zum Ausgleich der ${e1}.`, bookings: [bk([[S1.no, n1 * 1.2]], [['2800', n1 * 1.2]], { effect: 'Ø' })] },
+        { date: d(...d2), beleg: e2, text: `Kauf ${mName} bei ${S2.name} (${S2.no}) um ${E(n2)} + ${E(n2 * 0.2)} USt = ${E(n2 * 1.2)}; Inbetriebnahme am ${d(...inb2)}, Nutzungsdauer ${nd2} Jahre.`, bookings: [invoice('0400', n2, S2.no)] },
+        { date: d(...dT), beleg: eT, text: `${T.name} (${T.no}) stellt den Transport ${E(tr)} + ${E(tr * 0.2)} USt = ${E(tr * 1.2)} in Rechnung, zahlbar in zehn Tagen ohne Abzug.`, bookings: [invoice('0400', tr, T.no, { hint: ['Transportkosten sind Nebenkosten der Anschaffung: Anlagenkonto, nicht Aufwand.'] })] },
+        { date: d(...pay2), beleg: nr.B(), text: `Überweisung von ${E(sk.pay)} (${E(n2 * 1.2)} − ${pct} % Skonto) an ${S2.name}.`, bookings: sk.list },
+        { info: `${bShort}: Anschaffungswert ${E(aw1)}. ${mShort}: Anschaffungswert = Kaufpreis + Transport − Skonto.`, calc: [`${mShort}: ${E(n2)} + ${E(tr)} − ${E(sk.skN)} = ${E(aw2)}`] },
+        ...[0, 1, 2].map(i => ({ date: `31.12.${2025 + i}`, bookings: [afaBooking('0600', p1.rows[i], { label: bShort, calc: i === 0 ? afaCalc(aw1, nd1, p1, d(...d1)) : [] }), afaBooking('0400', p2.rows[i], { label: mShort, calc: i === 0 ? afaCalc(aw2, nd2, p2, d(...inb2)) : [] })] })),
+      ],
+    };
+  });
+
+  tpl('fahrzeug', 'Fahrzeuge und Gebäude', 'Pkw ohne Vorsteuer, Elektroauto, Lkw und Lagerhalle', 'akauf', r => {
+    const { names, sup, nr } = caseKit(r), company = r.pick(['Markus Kremser GmbH', 'Design Möbel Huber GmbH', 'Getränkehandel Reisinger KG', 'Fliesen Doppler GmbH']);
+    const elektro = r.chance(0.4), C1 = sup('cars'), steps = [];
+    const dP = [r.int(2, 26), r.int(2, 9)], gross = round100(r.int(24000, elektro ? 40000 : 39900)), net = r2(gross / 1.2);
+    const pkwAw = elektro ? net : gross, pP = afaPlan(pkwAw, 8, dP[1]), eP = nr.E();
+    steps.push({ date: d(...dP), beleg: eP, text: elektro ? `Kauf eines Elektro-Pkw (0 g CO₂) bei ${C1.name} (${C1.no}) um ${E(gross)} inkl. 20 % USt, sofortige Inbetriebnahme, Nutzungsdauer 8 Jahre.` : `Kauf eines Firmen-Pkw (Verbrennermotor) bei ${C1.name} (${C1.no}) um ${E(gross)} (inkl. 20 % USt und NoVA), sofortige Inbetriebnahme, Nutzungsdauer 8 Jahre.`,
+      bookings: [elektro ? bk([['0630', net], ['2500', gross - net]], [[C1.no, gross]], { effect: 'Ø', hint: ['Elektro-Pkw bis € 40.000,– brutto: voller Vorsteuerabzug.'], calc: [`Netto: ${E(gross)} : 1,2 = ${E(net)}`] }) : bk([['0630', gross]], [[C1.no, gross]], { effect: 'Ø', hint: ['Pkw mit Verbrennermotor: kein Vorsteuerabzug, der Bruttobetrag samt NoVA ist der Anschaffungswert.'] })] });
+    const payP = dateAfter(r, dP, 3, 12);
+    steps.push({ date: d(...payP), beleg: nr.B(), text: `Überweisung von ${E(gross)} an ${C1.name}.`, bookings: [bk([[C1.no, gross]], [['2800', gross]], { effect: 'Ø' })] });
+    const building = r.chance(0.6), rows = [];
+    if (building) {
+      const B = sup('bau'), n = round100(r.int(120000, 420000)), dB = dateAfter(r, payP, 4, 60), pB = afaPlan(n, 40, dB[1]);
+      steps.push({ date: d(...dB), beleg: nr.E(), text: `Rechnung der ${B.name} (${B.no}) über die Fertigstellung einer Lagerhalle: ${E(n)} + ${E(n * 0.2)} USt = ${E(n * 1.2)}, sofortige Inbetriebnahme, Nutzungsdauer 40 Jahre.`, bookings: [invoice('0300', n, B.no)] });
+      rows.push(['0300', 'Lagerhalle', pB, n, d(...dB), 40]);
+      steps.push({ info: 'Gut zu wissen: Im Steuerrecht dürfen neue Gebäude im ersten Jahr beschleunigt abgeschrieben werden (§ 8 Abs. 1a EStG). In diesem Fall rechnest du wie im Buch linear mit 2,5 % und der Halbjahresregel.' });
+    } else {
+      const L = sup('cars'), n = net100(r, 28000, 60000), dL = dateAfter(r, payP, 4, 60), nd = r.pick([5, 6, 8]), pL = afaPlan(n, nd, dL[1]);
+      steps.push({ date: d(...dL), beleg: nr.E(), text: `Kauf eines Lieferwagens (Lkw) bei ${L.name} (${L.no}) um ${E(n)} + ${E(n * 0.2)} USt = ${E(n * 1.2)}, sofortige Inbetriebnahme, Nutzungsdauer ${nd} Jahre.`, bookings: [invoice('0640', n, L.no, { hint: ['Beim Lkw gibt es den vollen Vorsteuerabzug.'] })] });
+      rows.push(['0640', 'Lkw', pL, n, d(...dL), nd]);
+    }
+    rows.unshift(['0630', 'Pkw', pP, pkwAw, d(...dP), 8]);
+    for (const y of [0, 1, 2]) steps.push({ date: `31.12.${2025 + y}`, bookings: rows.filter(([acc]) => y < 2 || acc !== '0630').map(([acc, label, plan, aw, when, nd]) => afaBooking(acc, plan.rows[y], { label, calc: y === 0 ? afaCalc(aw, nd, plan, when) : [] })) });
+    return { title: 'Anlagenkauf verbuchen, Abschreibung berechnen und verbuchen, Erfolgsauswirkung', company, intro: `${company} kauft im Jahr 2025 unter anderem folgende Anlagen:`, names, steps };
+  });
+
+  // Payment for small purchases: debit card and credit card are booked like the book's trainer does.
+  const PAY = { debit: ['3190', 'mit der Firmendebitkarte'], credit: ['3180', 'mit der Firmenkreditkarte'], cash: ['2700', 'bar'], bank: ['2800', 'per Banküberweisung'] };
+  function smallBuy(r, kind, payKey, forceGwg, avoid = []) {
+    const item = r.pick(SMALL.filter(x => !avoid.includes(x[1]) && (forceGwg === undefined || (forceGwg ? x[3][0] < 1000 : x[3][1] > 1250))));
+    const gross = forceGwg === false ? r.int(1260, Math.max(1270, item[3][1])) + r.pick([0, 0.9]) : r.int(item[3][0], Math.min(item[3][1], 1180)) + r.pick([0, 0.9]);
+    const net = r2(gross / 1.2), v = r2(gross - net), gwg = net <= 1000, [payAcc, payText] = PAY[payKey], assetAcc = item[2] === '0672' ? '0620' : '0600';
+    return { item, gross, net, v, gwg, payAcc, payText, assetAcc };
+  }
+  tpl('gwg', 'Anlagenzugänge verbuchen', 'Maschine, Server, Karte, Kassa und die € 1.000-Grenze für GWG', 'akauf', r => {
+    const { names, sup, nr } = caseKit(r), company = r.pick(['Skateshop Skates24 e. U.', 'Radsport Kogler e. U.', 'Fotostudio Lichtblick OG', 'Copyshop Gruber KG']);
+    const M1 = sup('machine'), O1 = sup('office'), O2 = sup('safe'), steps = [], afa = [];
+    const nM = net100(r, 4000, 16000), ndM = 10, dM = [r.int(2, 20), r.int(1, 3)], inbM = dateAfter(r, dM, 2, 8), eM = nr.E();
+    steps.push({ date: d(...dM), beleg: eM, text: `Kauf einer Verpackungsmaschine bei ${M1.name} (${M1.no}): ${E(nM)} + ${E(nM * 0.2)} USt = ${E(nM * 1.2)}, Inbetriebnahme am ${d(...inbM)}, Nutzungsdauer ${ndM} Jahre, lineare Abschreibung.`, bookings: [invoice('0400', nM, M1.no)] });
+    steps.push({ date: d(...dateAfter(r, dM, 5, 9)), beleg: nr.B(), text: `Überweisung an ${M1.name} zum Ausgleich der ${eM}.`, bookings: [bk([[M1.no, nM * 1.2]], [['2800', nM * 1.2]], { effect: 'Ø' })] });
+    afa.push(['0400', 'Verpackungsmaschine', afaPlan(nM, ndM, inbM[1]), nM, d(...inbM), ndM]);
+    const nS = net10(r, 1600, 4800), dS = [r.int(2, 20), r.int(4, 5)], inbS = dateAfter(r, dS, 2, 7), eS = nr.E();
+    steps.push({ date: d(...dS), beleg: eS, text: `Rechnung von ${O1.name} (${O1.no}) über einen Server: ${E(nS)} + ${E(nS * 0.2)} USt = ${E(nS * 1.2)}, zahlbar in 10 Tagen netto. Inbetriebnahme am ${d(...inbS)}, Nutzungsdauer 4 Jahre.`, bookings: [invoice('0620', nS, O1.no)] });
+    steps.push({ date: d(...dateAfter(r, dS, 4, 9)), beleg: nr.B(), text: `Überweisung an ${O1.name} zum Ausgleich der ${eS} laut Zahlungsbedingung.`, bookings: [bk([[O1.no, nS * 1.2]], [['2800', nS * 1.2]], { effect: 'Ø' })] });
+    afa.push(['0620', 'Server', afaPlan(nS, 4, inbS[1]), nS, d(...inbS), 4]);
+    const g1 = smallBuy(r, 'gwg', r.pick(['debit', 'cash']), true), dG = [r.int(2, 26), r.int(7, 9)];
+    steps.push({ date: d(...dG), beleg: g1.payAcc === '2700' ? nr.K() : nr.S(), text: `Kauf ${g1.item[4]} um ${E(g1.gross)} (inkl. 20 % USt), Zahlung ${g1.payText}.`, bookings: [bk([['7060', g1.net], ['2500', g1.v]], [[g1.payAcc, g1.gross]], { effect: '↓', hint: [`Netto ${E(g1.net)}: unter € 1.000,–, also GWG, sofort abschreiben.`, g1.payAcc === '3190' ? 'Debitkarte: 3190 Verbindlichkeiten Debitkarten.' : 'Barzahlung: 2700 Kassa.'], calc: [`${E(g1.gross)} : 1,2 = ${E(g1.net)}`] })] });
+    const nT = net10(r, 1100, 2900), dT = [r.int(2, 22), r.int(10, 10)], inbT = dateAfter(r, dT, 3, 10), eT = nr.E(), pctT = 2, skT = skontoBookings(O2.no, nT * 1.2, pctT, '0600');
+    steps.push({ date: d(...dT), beleg: eT, text: `Kauf eines Wandtresors bei ${O2.name} (${O2.no}): ${E(nT)} + ${E(nT * 0.2)} USt = ${E(nT * 1.2)}. Inbetriebnahme am ${d(...inbT)}, Nutzungsdauer 10 Jahre.`, bookings: [invoice('0600', nT, O2.no)] });
+    steps.push({ date: d(...dateAfter(r, dT, 5, 8)), beleg: nr.B(), text: `Überweisung von ${E(skT.pay)} an ${O2.name} zum Ausgleich der ${eT}, abzüglich ${pctT} % Skonto.`, bookings: skT.list });
+    afa.push(['0600', 'Wandtresor', afaPlan(r2(nT - skT.skN), 10, inbT[1]), r2(nT - skT.skN), d(...inbT), 10]);
+    const g2 = smallBuy(r, 'gwg', 'credit', r.chance(0.5), [g1.item[1]]), dG2 = [r.int(2, 26), 11];
+    steps.push({ date: d(...dG2), beleg: nr.S(), text: `Kauf ${g2.item[4]} um ${E(g2.gross)} (inkl. 20 % USt), Zahlung ${g2.payText}. Inbetriebnahme sofort, Nutzungsdauer 4 Jahre.`,
+      bookings: [g2.gwg ? bk([['7060', g2.net], ['2500', g2.v]], [['3180', g2.gross]], { effect: '↓', hint: [`Netto ${E(g2.net)}: GWG.`, 'Kreditkarte: 3180 Verbindlichkeiten Kreditkartenunternehmen.'], calc: [`${E(g2.gross)} : 1,2 = ${E(g2.net)}`] }) : bk([[g2.assetAcc, g2.net], ['2500', g2.v]], [['3180', g2.gross]], { effect: 'Ø', hint: [`Netto ${E(g2.net)}: über € 1.000,–, also kein GWG, sondern ein normales Anlagegut.`, 'Kreditkarte: 3180 Verbindlichkeiten Kreditkartenunternehmen.'], calc: [`${E(g2.gross)} : 1,2 = ${E(g2.net)}`] })] });
+    if (!g2.gwg) afa.push([g2.assetAcc, g2.item[1], afaPlan(g2.net, 4, 11), g2.net, d(...dG2), 4]);
+    steps.push({ date: '31.12.2025', text: 'Verbuche die Abschreibungen der aktivierten Anlagen.', bookings: afa.map(([acc, label, plan, aw, when, nd]) => afaBooking(acc, plan.rows[0], { label, calc: afaCalc(aw, nd, plan, when) })) });
+    return { title: 'Anlagenzugänge verbuchen', company, intro: `Bei ${company} ergeben sich im Geschäftsjahr 2025 unter anderem folgende Geschäftsfälle:`, names, steps };
+  });
+
+  tpl('gwg2', 'Geringwertige Wirtschaftsgüter am Jahresende abschreiben', 'Erst auf das GWG-Konto, am 31.12. als Aufwand', 'abuch', r => {
+    const { names, sup, nr } = caseKit(r), company = r.pick(['Steuerberatung Holzer OG', 'Architekturbüro Wendl GmbH', 'Werbeagentur Pixel KG']);
+    const a = smallBuy(r, 'gwg', 'cash', true), b = M.kit.repeat(() => { const x = smallBuy(r, 'gwg', 'debit', true, [a.item[1]]); return x.item[2] !== a.item[2] ? x : null; });
+    const cItem = r.pick(SMALL.filter(x => x[1] !== a.item[1] && x[1] !== b.item[1] && x[3][1] > 1250)), cAcc = cItem[2] === '0672' ? '0620' : '0600', cNet = round10(r.int(1050, 1900)), O = sup(cAcc === '0620' ? 'office' : 'shop');
+    const dates = [[r.int(2, 26), r.int(2, 4)], [r.int(2, 26), r.int(5, 7)], [r.int(2, 26), r.int(8, 10)]], slots = r.shuffle([0, 1, 2]);
+    const steps = [], yearEnd = [];
+    for (const [x, slot] of [[a, slots[0]], [b, slots[1]]]) {
+      steps.push({ at: slot, date: d(...dates[slot]), beleg: x.payAcc === '2700' ? nr.K() : nr.S(), text: `Kauf ${x.item[4]} um ${E(x.gross)} (inkl. 20 % USt), Zahlung ${x.payText}.`, bookings: [bk([[x.item[2], x.net], ['2500', x.v]], [[x.payAcc, x.gross]], { effect: 'Ø', hint: [`Netto ${E(x.net)}: GWG. In diesem Betrieb wird es zuerst auf ${kontoLabel(x.item[2])} erfasst.`, x.payAcc === '3190' ? 'Debitkarte: 3190 Verbindlichkeiten Debitkarten.' : 'Barzahlung: 2700 Kassa.'], calc: [`${E(x.gross)} : 1,2 = ${E(x.net)}`] })] });
+      yearEnd.push(bk([['7060', x.net]], [[x.item[2], x.net]], { label: x.item[1], effect: '↓', hint: ['Am Jahresende wird das GWG zur Gänze abgeschrieben: 7060 an das GWG-Konto.'] }));
+    }
+    const dC = dates[slots[2]], pc = afaPlan(cNet, 5, dC[1]);
+    steps.push({ at: slots[2], date: d(...dC), beleg: nr.E(), text: `Rechnung von ${O.name} (${O.no}) über ${cItem[0].replace(/ für das Büro| für den Pausenraum/, '')}: ${E(cNet)} + ${E(cNet * 0.2)} USt = ${E(cNet * 1.2)}, sofortige Inbetriebnahme, Nutzungsdauer 5 Jahre.`, bookings: [invoice(cAcc, cNet, O.no, { hint: [`Netto ${E(cNet)}: über € 1.000,–, also kein GWG, sondern ein normales Anlagegut.`] })] });
+    steps.sort((x, y) => x.at - y.at);
+    steps.push({ date: '31.12.2025', text: `Die geringwertigen Wirtschaftsgüter werden am Jahresende zur Gänze abgeschrieben, ${cItem[1] === 'Kaffeemaschine' ? 'die' : 'der'} ${cItem[1]} planmäßig über 5 Jahre.`.replace('der Tablet', 'das Tablet'), bookings: [...yearEnd, afaBooking(cAcc, pc.rows[0], { label: cItem[1], calc: afaCalc(cNet, 5, pc, d(...dC)) })] });
+    return { title: 'Geringwertige Wirtschaftsgüter verbuchen', company, intro: `${company} erfasst geringwertige Wirtschaftsgüter zuerst auf einem eigenen Anlagenkonto und schreibt sie am Jahresende zur Gänze ab.`, names, steps };
+  });
+
+  tpl('afa', 'Abschreibungen zum Jahresende', 'Anlagenverzeichnis: Halbjahr, Pkw, Gebäude und Erinnerungseuro', 'afa', r => {
+    const company = r.pick(['Tischlerei Aigner e. U.', 'Gärtnerei Moser KG', 'Autowerkstatt Binder GmbH']), list = [];
+    const add = (acc, label, aw, start, nd, keep) => { const plan = afaPlan(aw, nd, start[1], { year: start[2], keepEuro: keep }); list.push({ acc, label, aw, start, nd, keep, plan }); };
+    add('0400', r.pick(['Hobelmaschine', 'Lackieranlage', 'Hebebühne']), net100(r, 9000, 40000), [r.int(1, 28), r.int(1, 12), 2025], r.pick([5, 8, 10]), false);
+    add('0630', 'Firmen-Pkw', round100(r.int(24000, 39900)), [r.int(1, 28), r.int(1, 12), r.int(2019, 2023)], 8, false);
+    const itMonth = r.int(1, 12);
+    add('0620', r.pick(['Laptops', 'Server', 'Kassensystem']), net10(r, 2000, 6000), [r.int(1, 28), itMonth, itMonth >= 7 ? 2021 : 2022], 4, true);
+    add('0300', 'Werkstattgebäude', round100(r.int(180000, 480000)), [r.int(1, 28), r.int(1, 12), r.int(2012, 2020)], 40, false);
+    const steps = [], rowsFor = x => x.plan.rows.find(y => y.year === 2025);
+    const table = { head: 'row', rows: [['Anlage (Konto)', 'Inbetriebnahme', 'Anschaffungswert', 'ND', 'Buchwert 1.1.2025'], ...list.map(x => { const row = rowsFor(x), bw = row ? r2(row.bw + row.afa) : 1; return [`${x.label} (${x.acc})`, d(...x.start.slice(0, 2), x.start[2]), E(x.aw), `${x.nd} J.`, x.start[2] === 2025 ? '–' : E(bw)]; })] };
+    const bookings = [];
+    for (const x of list) {
+      const row = rowsFor(x);
+      if (row) bookings.push(afaBooking(x.acc, row, { label: x.label, hint: [row === x.plan.rows.at(-1) ? (x.keep ? 'Letztes Jahr der Nutzungsdauer: Rest-Buchwert minus € 1,– Erinnerungseuro.' : 'Letztes Jahr: der Rest-Buchwert.') : x.plan.half && row === x.plan.rows[0] ? 'Inbetriebnahme in der zweiten Jahreshälfte: halbe Jahresabschreibung.' : `Jahresabschreibung: ${E(x.aw)} : ${x.nd}.`], calc: [`Jahresabschreibung ${E(x.plan.annual)}${x.plan.half && row === x.plan.rows[0] ? ', davon die Hälfte' : ''}`] }));
+    }
+    const old = r.pick([['Kühlschrank', '0600', 'ein alter Kühlschrank, der'], ['Drucker', '0620', 'ein alter Drucker, der'], ['Werkbank', '0600', 'eine alte Werkbank, die']]);
+    bookings.push(bk([['7010', 1]], [[old[1], 1]], { label: old[0], effect: '↓', hint: ['Die Anlage steht nur mehr mit € 1,– in den Büchern und scheidet aus: Erinnerungseuro abschreiben.'] }));
+    steps.push({ date: '31.12.2025', text: `Verbuche die Abschreibungen für 2025. Alle Anlagen werden linear abgeschrieben; die EDV bleibt nach Ende der Nutzungsdauer weiter im Betrieb. Außerdem scheidet ${old[2]} nur mehr mit dem Erinnerungseuro erfasst ist, aus dem Betrieb aus.`, table, bookings });
+    return { title: 'Abschreibungen berechnen und verbuchen', company, intro: `Auszug aus dem Anlagenverzeichnis von ${company}:`, names: {}, steps };
+  });
+
+  tpl('bewertung', 'Vermögen über mehrere Jahre bewerten', 'Grundstück, Aktien und Beteiligung: Abwertung, Zuschreibung oder keine Buchung', 'av', r => {
+    const company = r.pick(['Hotel-Planungs- und Bau-GmbH', 'Bauunternehmen Damir Krizman e. U.', 'Computer Projects Unlimited KG']), kinds = r.shuffle(['grund', 'aktien', 'beteiligung']).slice(0, r.chance(0.5) ? 3 : 2), buys = [], years = { 2025: [], 2026: [], 2027: [] }, texts = { 2025: [], 2026: [], 2027: [] };
+    if (kinds.includes('grund')) {
+      const A = r.pick([2000, 5000, 8000, 10000, 25000]), p0 = r.int(60, 160), p1 = p0 - r.int(3, 10), p2 = p0 - r.int(12, 28), p3 = p0 + r.int(-6, 25), up = Math.min(p0, p3) - p2;
+      buys.push({ date: d(r.int(2, 28), r.int(2, 5)), beleg: 'B ' + r.int(20, 80), text: `Kauf eines Grundstücks (${int(A)} m² zu ${E(p0)} pro m²) für eine spätere Lagerhalle, Bezahlung per Banküberweisung (Nebenkosten bleiben unberücksichtigt).`, bookings: [bk([['0200', A * p0]], [['2800', A * p0]], { effect: 'Ø', label: 'Grundstück' })] });
+      texts[2025].push(`Grundstück: Wegen Spekulationen sinkt der Preis vorübergehend auf ${E(p1)} pro m².`); years[2025].push(none({ label: 'Grundstück', hint: ['Anlagevermögen, nur vorübergehende Wertminderung: Abwertung nicht erlaubt.'] }));
+      texts[2026].push(`Grundstück: Eine Deponie in der Nähe wird fix geplant, der Preis sinkt dauerhaft auf ${E(p2)} pro m².`); years[2026].push(bk([['7040', A * (p0 - p2)]], [['0200', A * (p0 - p2)]], { label: 'Grundstück', effect: '↓', hint: ['Dauernde Wertminderung: muss abgewertet werden.'], calc: [`${int(A)} · (${E(p0)} − ${E(p2)}) = ${E(A * (p0 - p2))}`] }));
+      texts[2027].push(`Grundstück: Die Deponie wird abgesagt, der Preis steigt auf ${E(p3)} pro m².`); years[2027].push(bk([['0200', A * up]], [['4660', A * up]], { label: 'Grundstück', effect: '↑', hint: ['Die Gründe fallen weg: Zuschreibung, höchstens bis zu den Anschaffungskosten.'], calc: [`Neuer Wert ${int(A)} · ${E(Math.min(p0, p3))}, Zuschreibung ${E(A * up)}`] }));
+    }
+    if (kinds.includes('aktien')) {
+      const n = r.pick([200, 300, 500, 1000, 2000]), k0 = r.int(20, 60), k1 = k0 - r.int(4, 12), k2 = k0 + r.int(-2, 12), b1 = n * Math.min(k0, k1), b2 = n * Math.min(k0, k2), k3 = r.chance(0.5) ? Math.max(k0, k2) + r.int(1, 8) : Math.min(k0, k2) - r.int(3, 9), b3 = n * Math.min(k0, k3), name = r.pick(['Chemie AG', 'Energie AG', 'Telekom AG']);
+      buys.push({ date: d(r.int(2, 28), r.int(3, 8)), beleg: 'B ' + r.int(81, 140), text: `Kauf von ${n} Aktien der ${name} zu Spekulationszwecken (Umlaufvermögen) zum Kurs von ${E(k0)}, Zahlung über das Bankkonto (Spesen bleiben unberücksichtigt).`, bookings: [bk([['2620', n * k0]], [['2800', n * k0]], { effect: 'Ø', label: 'Aktien' })] });
+      const step = (y, from, to, k) => { texts[y].push(`Aktien der ${name}: Kurs ${E(k)}.`); const diff = to - from; years[y].push(diff < 0 ? bk([['8271', -diff]], [['2620', -diff]], { label: 'Aktien', effect: '↓', hint: ['Umlaufvermögen: strenges Niederstwertprinzip.'], calc: [`${n} · ${E(Math.min(k0, k))} = ${E(to)}, bisher ${E(from)}`] }) : diff > 0 ? bk([['2620', diff]], [['8180', diff]], { label: 'Aktien', effect: '↑', hint: ['Zuschreibung, höchstens bis zu den Anschaffungskosten.'], calc: [`${n} · ${E(Math.min(k0, k))} = ${E(to)}, bisher ${E(from)}`] }) : none({ label: 'Aktien', hint: ['Der Bilanzansatz bleibt gleich: höchstens Anschaffungskosten.'] })); };
+      step(2025, n * k0, b1, k1); step(2026, b1, b2, k2); step(2027, b2, b3, k3);
+    }
+    if (kinds.includes('beteiligung')) {
+      const n = r.pick([500, 1000, 1500]), k0 = r.int(30, 80), k1 = k0 - r.int(6, 15), k2 = k1 + r.int(3, 22), b2 = n * Math.min(k0, k2), name = r.pick(['Zulieferer Holzbau AG', 'Bau AG', 'Logistik AG']);
+      buys.push({ date: d(r.int(2, 28), r.int(1, 6)), beleg: 'B ' + r.int(141, 200), text: `Erwerb von ${n} Aktien der ${name} als langfristige Beteiligung zum Kurs von ${E(k0)}, Zahlung per Bank.`, bookings: [bk([['0800', n * k0]], [['2800', n * k0]], { effect: 'Ø', label: 'Beteiligung' })] });
+      texts[2026].push(`Beteiligung: Wegen einer Branchenkrise fällt der Kurs dauerhaft auf ${E(k1)}.`); years[2026].push(bk([['8200', n * (k0 - k1)]], [['0800', n * (k0 - k1)]], { label: 'Beteiligung', effect: '↓', hint: ['Finanzanlage, dauernde Wertminderung: muss abgewertet werden.'], calc: [`${n} · (${E(k0)} − ${E(k1)}) = ${E(n * (k0 - k1))}`] }));
+      texts[2027].push(`Beteiligung: Die Branche erholt sich, Kurs ${E(k2)}.`); years[2027].push(bk([['0800', b2 - n * k1]], [['8170', b2 - n * k1]], { label: 'Beteiligung', effect: '↑', hint: ['Zuschreibung bis höchstens zu den Anschaffungskosten.'], calc: [`${n} · ${E(Math.min(k0, k2))} − ${n} · ${E(k1)} = ${E(b2 - n * k1)}`] }));
+      texts[2025].push(`Beteiligung: Kurs unverändert ${E(k0)}.`); years[2025].push(none({ label: 'Beteiligung', hint: ['Keine Wertänderung, keine Buchung.'] }));
+    }
+    let bNr = r.int(20, 80);
+    const steps = [...buys.sort((a, b) => { const [da, ma] = a.date.split('.').map(Number), [db, mb] = b.date.split('.').map(Number); return ma - mb || da - db; })].map(x => ({ ...x, beleg: `B ${bNr += r.int(3, 30)}` }));
+    for (const y of [2025, 2026, 2027]) steps.push({ date: `31.12.${y}`, text: texts[y].join(' '), bookings: years[y] });
+    return { title: 'Vermögen bewerten', company, intro: `Bei ${company} ergeben sich folgende Sachverhalte. Verbuche die Käufe und die Bewertung zu jedem Abschlussstichtag. Muss nichts gebucht werden, tippe auf „Keine Buchung“.`, names: {}, steps, allowNone: true };
+  });
+
+  tpl('privat', 'Waren, Privat und Fremdwährung', 'Vorräte abwerten, Entnahme, Einlage, Kursverlust und Kursgewinn', 'fk', r => {
+    const { names, sup } = caseKit(r), company = r.pick(['Juwelier Kuno Trimmel e. U.', 'Sportgeschäft Leitner e. U.', 'Elektrohandel Fuchs e. U.']), steps = [];
+    const g = goods(r, r.pick(['lower', 'lower', 'higher'])), down = g.wbp < g.ep;
+    const w = withdrawal(r), ust = r2(w.tw * 0.2);
+    const [what, acc] = /Laptop/.test(w.what) ? ['einen privaten Büroschrank', '0600'] : r.pick([['ihren privaten Laptop', '0620'], ['einen privaten Büroschrank', '0600']]), tw = round10(r.int(300, 1400));
+    steps.push({ date: d(r.int(2, 28), r.int(3, 10)), beleg: 'EB ' + r.int(10, 40), text: `Die Inhaberin bringt ${what} in den Betrieb ein. Teilwert am Tag der Einlage: ${E(tw)}.`, bookings: [bk([[acc, tw]], [['9600', tw]], { hint: ['Einlagen werden mit dem Teilwert angesetzt: Anlagenkonto an Privat, ohne Umsatzsteuer.'] })] });
+    steps.push({ date: d(r.int(2, 20), 12), beleg: 'EB ' + r.int(41, 99), text: `Die Inhaberin entnimmt ${w.what} aus dem Warenlager für private Zwecke. Einstandspreis ${E(w.ep)}, Wiederbeschaffungspreis am Tag der Entnahme ${E(w.tw)}, Verkaufspreis ohne USt ${E(w.vk)}.`, bookings: [bk([['9600', w.tw + ust]], [['4900', w.tw], ['3500', ust]], { hint: ['Bewertung mit dem Teilwert, bei Waren der Wiederbeschaffungspreis.', 'Auf die Entnahme fallen 20 % Umsatzsteuer an.'], calc: [`Teilwert ${E(w.tw)} + USt ${E(ust)} = ${E(w.tw + ust)}`] })] });
+    const f = M.kit.repeat(() => { const x = fx(r); return x.up ? x : null; }), S = sup('abroad'), k2 = r2(f.k1 + r.pick([0.02, 0.04, 0.06, 0.1])), e2 = r2(f.usd / k2), bil2 = Math.max(f.e0, e2), back = r2(f.e1 - bil2);
+    steps.push({ date: '31.12.2025', text: `Bewertung zum Abschlussstichtag: ${g.n} ${g.name} (Einstandspreis ${E(g.ep)}) sind auf Lager, Wiederbeschaffungspreis ${E(g.wbp)}. Außerdem ist eine Lieferverbindlichkeit gegenüber ${S.name} (${S.no}) über USD ${int(f.usd)} offen, erfasst zum Kurs 1 € = ${kurs(f.k0)} USD (${E(f.e0)}). Kurs am 31.12.: 1 € = ${kurs(f.k1)} USD.`, bookings: [
+      down ? bk([['7800', g.n * (g.ep - g.wbp)]], [['1600', g.n * (g.ep - g.wbp)]], { label: 'Warenvorrat', effect: '↓', hint: ['Umlaufvermögen: strenges Niederstwertprinzip.'], calc: [`${g.n} · (${E(g.ep)} − ${E(g.wbp)}) = ${E(g.n * (g.ep - g.wbp))}`] }) : none({ label: 'Warenvorrat', hint: ['Der Wiederbeschaffungspreis ist höher: Über die Anschaffungskosten wird nicht aufgewertet.'] }),
+      bk([['7815', f.e1 - f.e0]], [[S.no, f.e1 - f.e0]], { label: 'Verbindlichkeit', effect: '↓', hint: ['Der Eurobetrag der Schuld ist gestiegen: strenges Höchstwertprinzip, aufwerten.'], calc: [`USD ${int(f.usd)} : ${kurs(f.k1)} = ${E(f.e1)}, bisher ${E(f.e0)}`] }),
+    ] });
+    steps.push({ date: '31.12.2026', text: `Die Verbindlichkeit ist noch offen. Kurs am 31.12.2026: 1 € = ${kurs(k2)} USD.`, bookings: [back > 0 ? bk([[S.no, back]], [['4840', back]], { label: 'Verbindlichkeit', effect: '↑', hint: ['Abwerten, aber nie unter den Entstehungswert.'], calc: [`USD ${int(f.usd)} : ${kurs(k2)} = ${E(e2)}, höchstens bis ${E(f.e0)} abwerten`] }) : none({ label: 'Verbindlichkeit' })] });
+    return { title: 'Bewertung von Vorräten, Privatentnahmen und Verbindlichkeiten', company, intro: `${company} hat folgende Geschäftsfälle zu verbuchen. Muss nichts gebucht werden, tippe auf „Keine Buchung“.`, names, steps, allowNone: true };
+  });
+
+  function makeCase(id, seed) {
+    const t = TEMPLATES.find(x => x.id === id) || TEMPLATES[0], r = makeRng(seed), c = t.make(r);
+    c.steps.forEach(s => (s.bookings || []).forEach(b => { b.soll = b.soll.filter(l => l.amt > 0); b.haben = b.haben.filter(l => l.amt > 0); }));
+    return { id: t.id, seed, tplTitle: t.title, sub: t.sub, allowNone: !!c.allowNone, ...c };
+  }
+  const caseBookings = c => c.steps.flatMap(s => s.bookings || []);
+  function validateTrainer(raw) {
+    const out = {};
+    for (const t of TEMPLATES) { const x = raw?.[t.id]; if (x && typeof x === 'object') out[t.id] = { runs: Math.max(0, Math.trunc(Number(x.runs)) || 0), perfect: Math.max(0, Math.trunc(Number(x.perfect)) || 0), bookings: Math.max(0, Math.trunc(Number(x.bookings)) || 0), best: Math.min(100, Math.max(0, Math.round(Number(x.best)) || 0)), at: Number(x.at) || 0 }; }
+    return out;
+  }
+  const trainer = { TEMPLATES: TEMPLATES.map(({ id, title, sub, fig }) => ({ id, title, sub, fig })), makeCase, caseBookings, gradeBooking, resolveAcc, searchKonten, kontoLabel, kontoName, parseAmount, validate: validateTrainer, eur };
+
+  return { ...E_, buildTest, ACC, eur, afaPlan, booking, r2, trainer, KONTO };
 });

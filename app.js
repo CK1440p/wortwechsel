@@ -77,6 +77,7 @@
   data.catalogs = withCatalogSeeds(data.catalogs);
   data.math = M.validateProgress(data.math);
   data.rw = RW_CORE.validateProgress(data.rw);
+  data.rwt = RW_CORE.trainer.validate(data.rwt);
   let selectedId = data.selectedId || data.sets[0]?.id, view = 'library', session = null, flash = null, termSearch = '', librarySearch = '';
   let importDraft = null, importTarget = null, importRaw = '', importWarnings = [], toastTimer, fileLoadVersion = 0;
   const currentSet = () => data.sets.find(s => s.id === selectedId) || data.sets[0];
@@ -113,6 +114,7 @@
     $('#breadcrumb').innerHTML = `${esc(subject)} <span>/</span> <strong>${esc(title)}</strong>`;
     $('#set-count').textContent = data.sets.length;
     document.querySelectorAll('.nav-item[data-view]').forEach(el => el.classList.toggle('active', view === el.dataset.view || (el.dataset.view === 'catalogs' && view === 'catalog') || view === `${el.dataset.view}-topic`));
+    $('#nav-rw-trainer').classList.toggle('active', view === 'rw-trainer');
     for (const K of ['math', 'rw']) for (const part of ['mix', 'test', 'formulas']) $(`#nav-${K}-${part}`).classList.toggle('active', view === `${K}-${part === 'mix' ? 'practice' : part}`);
     $('#nav-practice').classList.toggle('active', view === 'learn');
     $('#nav-qa-learn').classList.toggle('active', view === 'qa-learn');
@@ -1000,6 +1002,7 @@
       data.grammar = C.mergeStates({ grammar: data.grammar }, { grammar: backup.grammar }).grammar;
       if (backup.math) data.math = M.validateProgress(C.mergeMath(data.math, backup.math));
       if (backup.rw) data.rw = RW_CORE.validateProgress(C.mergeMath(data.rw, backup.rw));
+      if (backup.rwt) data.rwt = RW_CORE.trainer.validate(C.mergeStates({ rwt: data.rwt }, { rwt: RW_CORE.trainer.validate(backup.rwt) }).rwt);
       for (const raw of Array.isArray(backup.catalogs) ? backup.catalogs : []) {
         const builtIn = data.catalogs.find(c => c.seed && c.id === raw?.id);
         if (builtIn) { Object.assign(builtIn, C.mergeCatalogs([builtIn], [C.validateCatalog({ ...raw, questions: builtIn.questions })].filter(Boolean))[0]); continue; }
@@ -1011,7 +1014,7 @@
   }
   function download(name, text, type) { const blob = new Blob([text], { type }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000); }
   function exportSet() { const s = currentSet(); download(s.title.replace(/[<>:"/\\|?*]/g, '-') + '.txt', '\uFEFF' + C.serializeTerms(s.terms), 'text/plain;charset=utf-8'); toast('Vokabelliste exportiert.'); }
-  function exportBackup() { download(`wortwechsel-sicherung-${localDate()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sets: data.sets, dialogs: data.dialogs, grammar: data.grammar, catalogs: data.catalogs, math: data.math, rw: data.rw, settings: data.settings }, null, 2), 'application/json'); toast('Sicherung exportiert. Über „Neues Lernset“ wieder importieren.'); }
+  function exportBackup() { download(`wortwechsel-sicherung-${localDate()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sets: data.sets, dialogs: data.dialogs, grammar: data.grammar, catalogs: data.catalogs, math: data.math, rw: data.rw, rwt: data.rwt, settings: data.settings }, null, 2), 'application/json'); toast('Sicherung exportiert. Über „Neues Lernset“ wieder importieren.'); }
   function confirmAction(title, text, label, fn) {
     const d = $('#confirm-dialog');
     d.innerHTML = `<div class="dialog-header"><h2 id="confirm-heading">${esc(title)}</h2><button class="icon-button" data-close="confirm-dialog" aria-label="Schließen">${icon('close')}</button></div><p>${esc(text)}</p><div class="dialog-footer"><button class="button secondary" data-close="confirm-dialog">Abbrechen</button><button class="button primary" id="confirm-action">${esc(label)}</button></div>`;
@@ -1025,7 +1028,8 @@
   };
   const mathApp = window.WWMathApp.create({ ...courseCtx, catalogs: () => subjectCatalogs(MATH) }, window.WWMathCourse);
   const rwApp = window.WWMathApp.create({ ...courseCtx, catalogs: () => subjectCatalogs(RW) }, window.WWRwCourse);
-  const courseApps = [mathApp, rwApp];
+  const trainerApp = window.WWTrainer.create({ ...courseCtx });
+  const courseApps = [mathApp, rwApp, trainerApp];
   function appForView(v) { return courseApps.find(a => a.views.includes(v)); }
   function appForSubject(name = subject) { return courseApps.find(a => sameSubject(a.course.subject, name)); }
   document.addEventListener('click', e => {
@@ -1033,6 +1037,7 @@
     const tab = e.target.closest('[data-subject]'); if (tab) return switchSubject(tab.dataset.subject);
     const btn = e.target.closest('[data-action]'); if (!btn || btn.disabled) return;
     const action = btn.dataset.action;
+    if (action.startsWith('t-')) return trainerApp.action(action, btn);
     if (action.startsWith('m-')) return (appForSubject() || mathApp).action(action, btn);
     if (btn.dataset.id) { selectedId = btn.dataset.id; save(); }
     if (btn.dataset.table) grammarId = btn.dataset.table;
@@ -1174,7 +1179,7 @@
     snapshot: () => data,
     canApply: () => !storageBlocked && !session?.current && !dlg && !gram && !qa && !qaTest && !courseApps.some(a => a.busy()) && !document.querySelector('dialog[open]'),
     apply(raw) {
-      const next = hydrate(raw); next.dialogs = mergeDialogs(next.dialogs); next.grammar = C.validateGrammarProgress(next.grammar); next.catalogs = withCatalogSeeds(next.catalogs); next.math = M.validateProgress(next.math); next.rw = RW_CORE.validateProgress(next.rw);
+      const next = hydrate(raw); next.dialogs = mergeDialogs(next.dialogs); next.grammar = C.validateGrammarProgress(next.grammar); next.catalogs = withCatalogSeeds(next.catalogs); next.math = M.validateProgress(next.math); next.rw = RW_CORE.validateProgress(next.rw); next.rwt = RW_CORE.trainer.validate(next.rwt);
       data = next;
       if (!data.sets.some(s => s.id === selectedId)) selectedId = data.selectedId && data.sets.some(s => s.id === data.selectedId) ? data.selectedId : data.sets[0]?.id;
       applyingRemote = true; save(); applyingRemote = false;

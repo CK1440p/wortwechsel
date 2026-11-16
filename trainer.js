@@ -1,0 +1,262 @@
+// Buchungstrainer: whole cases in the style of the book's exercises. Every document gets booking lines
+// (account and amount on each side), and every field is checked as soon as it is left.
+(() => {
+  const R = window.WWRw, T = R.trainer, M = window.WWMath, { rich } = M;
+  const VIEW = 'rw-trainer';
+  window.WWTrainer = { create(ctx) {
+    const { $, esc, icon, confirm, reduced, shell, save, ring, countAnswer, toast } = ctx;
+    const stats = () => { const d = ctx.data(); if (!d.rwt) d.rwt = {}; return d.rwt; };
+    const fine = () => !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
+    let cur = null, observer = null;
+    const course = { subject: 'Rechnungswesen', key: 'rwt' };
+    const eur = v => T.eur(v);
+
+    function leave() { cur = null; observer?.disconnect?.(); observer = null; }
+
+    // ---- Overview ----
+    function home() {
+      leave(); shell(VIEW, 'Buchungstrainer');
+      const st = stats(), runs = Object.values(st).reduce((s, x) => s + x.runs, 0), done = Object.values(st).reduce((s, x) => s + x.bookings, 0);
+      $('#main').innerHTML = `<button class="back-link" data-action="m-home">${icon('back')} Rechnungswesen</button>
+        <section class="page-intro"><div><h1>Buchungstrainer<span class="blue-dot">.</span></h1><p>Ganze Fälle wie im Buch: Beleg lesen, Konto und Betrag eintragen. Jedes Feld wird sofort geprüft, und jeder Fall hat neue Zahlen.</p></div><button class="button primary" data-action="t-random">${icon('spark')}Zufälliger Fall</button></section>
+        <section class="tr-how">${[['1', 'Konto tippen', 'Nummer oder Name, zum Beispiel „04“ oder „Masch“. Die Liste ist der Kontenplan aus dem Buch.'], ['2', 'Betrag eintragen', '„1615,2“, „1.615,20“ oder „€ 1.615,20“, alles geht. Enter springt weiter.'], ['3', 'Grün heißt richtig', 'Rot zeigt, was nicht passt, oft mit einem Hinweis. Tipp und Lösung gibt es bei jeder Buchung.']].map(([n, t, p], i) => `<article style="--i:${i}"><span>${n}</span><strong>${t}</strong><p>${p}</p></article>`).join('')}</section>
+        ${runs ? `<p class="tr-total">${runs} ${runs === 1 ? 'Fall' : 'Fälle'} gelöst · ${done} Buchungen richtig</p>` : ''}
+        <section class="library-section"><div class="section-heading"><div><h2>Fälle <span class="count-badge">${T.TEMPLATES.length}</span></h2></div></div><div class="set-grid tr-cases">${T.TEMPLATES.map((t, i) => { const s = st[t.id]; return `<article class="set-card" style="--i:${i}"><div class="set-card-top"><div class="set-emoji tone-${i % 3}">${window.WWRwCourse.fig(t.fig)}</div>${s?.runs ? `<span class="qa-level l3"><i></i>${s.best}%</span>` : '<span class="qa-level l0"><i></i>Neu</span>'}</div><button class="set-title" data-action="t-open" data-tpl="${t.id}">${esc(t.title)}</button><div class="set-meta">${esc(t.sub)}</div><div class="set-progress-label"><span>${s?.runs ? `${s.runs}× gelöst` : 'Noch nicht geübt'}</span><strong>${s?.runs ? `${s.perfect}× fehlerfrei` : ''}</strong></div><div class="set-card-footer"><button class="text-button" data-action="t-open" data-tpl="${t.id}">Fall starten</button><button class="round-button" data-action="t-open" data-tpl="${t.id}" aria-label="${esc(t.title)} starten">${icon('arrow')}</button></div></article>`; }).join('')}</div></section>`;
+    }
+
+    // ---- One case ----
+    function open(id, seed = Math.floor(Math.random() * 2 ** 31)) {
+      leave();
+      const c = T.makeCase(id, seed), entries = [];
+      c.steps.forEach((s, si) => (s.bookings || []).forEach((b, bi) => entries.push({ si, bi, b, rows: Array.from({ length: rowsOf(b) }, () => ({ sa: '', sb: '', ha: '', hb: '' })), effect: null, none: false, state: 'open', wrong: false, helped: false, hints: 0 })));
+      cur = { c, entries, touched: false, finished: false, started: Date.now() };
+      draw();
+    }
+    const rowsOf = b => Math.max(b.soll.length, b.haben.length, 1);
+    const entryOf = el => { const box = el.closest('.tr-book'); return box && cur ? cur.entries[Number(box.dataset.e)] : null; };
+    const tableHtml = t => t ? `<div class="m-table-wrap"><table class="m-table rows"><tbody>${t.rows.map((r, i) => `<tr>${r.map(c => i === 0 ? `<th>${esc(c)}</th>` : `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : '';
+    function lineHtml(side, r, first) {
+      const k = side === 's' ? 's' : 'h';
+      return `<div class="tr-line"><div class="tr-acc"><input type="text" class="tr-in tr-a" data-k="${k}a" data-r="${r}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" ${first ? `placeholder="${side === 's' ? 'Soll-Konto' : 'Haben-Konto'}"` : ''} aria-label="${side === 's' ? 'Soll' : 'Haben'}-Konto, Zeile ${r + 1}" role="combobox" aria-expanded="false" aria-autocomplete="list"><ul class="tr-dd" role="listbox" hidden></ul></div><span class="tr-eur" aria-hidden="true">€</span><input type="text" class="tr-in tr-v" data-k="${k}b" data-r="${r}" inputmode="decimal" autocomplete="off" enterkeyhint="next" aria-label="${side === 's' ? 'Soll' : 'Haben'}-Betrag, Zeile ${r + 1}"></div>`;
+    }
+    function bookingHtml(e, ei) {
+      const b = e.b, n = rowsOf(b);
+      return `<div class="tr-book" data-e="${ei}">
+        ${b.label ? `<div class="tr-label">${esc(b.label)}</div>` : ''}<span class="tr-badge" aria-hidden="true">${icon('check')}</span><span class="tr-burst" aria-hidden="true"></span>
+        <div class="tr-rows"><div class="tr-side">${Array.from({ length: n }, (_, r) => lineHtml('s', r, r === 0)).join('')}</div><div class="tr-slash" aria-hidden="true"><svg viewBox="0 0 20 100" preserveAspectRatio="none"><line x1="15" y1="3" x2="5" y2="97" pathLength="1"/></svg><span>an</span></div><div class="tr-side">${Array.from({ length: n }, (_, r) => lineHtml('h', r, r === 0)).join('')}</div></div>
+        <div class="tr-foot">${b.effect !== null ? `<div class="tr-effect" role="group" aria-label="Auswirkung auf das Eigenkapital"><span>Eigenkapital</span>${[['↑', 'vermehrt'], ['Ø', 'erfolgsneutral'], ['↓', 'vermindert']].map(([v, t]) => `<button type="button" data-action="t-effect" data-v="${v}" aria-pressed="false" title="${t}">${v}</button>`).join('')}</div>` : ''}${cur.c.allowNone ? '<button type="button" class="tr-none" data-action="t-none" aria-pressed="false">Keine Buchung</button>' : ''}<p class="tr-msg" role="status"></p><div class="tr-tools"><button type="button" class="text-button" data-action="t-hint">${icon('spark')}Tipp</button><button type="button" class="text-button" data-action="t-solve">Lösung</button></div></div>
+        <div class="tr-more" hidden></div></div>`;
+    }
+    function draw() {
+      const c = cur.c;
+      shell(VIEW, 'Buchungstrainer');
+      let ei = 0;
+      $('#main').innerHTML = `<section class="tr-case">
+        <div class="qa-test-bar tr-bar"><button class="back-link" data-action="t-exit">${icon('back')}Trainer</button><div class="qa-test-title"><strong>${esc(c.company)}</strong><small id="tr-status"></small></div><div class="tr-meter" aria-hidden="true"><span id="tr-meter"></span></div><button class="icon-button" data-action="t-new" aria-label="Neuer Fall" title="Neuer Fall mit neuen Zahlen">${icon('swap')}</button></div>
+        <header class="tr-head"><div class="eyebrow">BUCHUNGSTRAINER · ${esc(c.sub.toUpperCase())}</div><h1>${esc(c.title)}</h1><p class="tr-intro">${rich(c.intro)}</p></header>
+        <ol class="tr-steps">${c.steps.map((s, si) => `<li class="tr-step${s.info ? ' tr-step-info' : ''}" style="--i:${Math.min(si, 6)}">${s.info ? `<div class="tr-info">${icon('book')}<div><p>${rich(s.info)}</p>${s.calc?.length ? `<details class="tr-calc"><summary>Nebenrechnung zeigen</summary>${s.calc.map(x => `<p>${rich(x)}</p>`).join('')}</details>` : ''}</div></div>` : `<p class="tr-doc">${s.date ? `<b>${esc(s.date)}${s.beleg ? `&nbsp;&nbsp;${esc(s.beleg)}` : ''}</b> ` : ''}${s.text ? rich(s.text) : ''}</p>`}${tableHtml(s.table)}${(s.bookings || []).map(() => bookingHtml(cur.entries[ei], ei++)).join('')}</li>`).join('')}</ol>
+        <div class="tr-actions"><button class="button secondary" data-action="t-check-all">${icon('check')}Alles prüfen</button><button class="button primary" data-action="t-new">Neuer Fall ${icon('arrow')}</button></div></section>`;
+      reveal();
+      progress();
+    }
+    // Steps glide in while scrolling.
+    function reveal() {
+      const steps = [...document.querySelectorAll('.tr-step')];
+      if (reduced() || typeof IntersectionObserver !== 'function') { steps.forEach(s => s.classList.add('in')); return; }
+      observer = new IntersectionObserver(list => list.forEach(x => { if (x.isIntersecting) { x.target.classList.add('in'); observer.unobserve(x.target); } }), { rootMargin: '0px 0px -8% 0px' });
+      steps.forEach(s => observer.observe(s));
+    }
+    function progress() {
+      if (!cur) return;
+      const all = cur.entries.length, ok = cur.entries.filter(e => e.state === 'ok').length, shown = cur.entries.filter(e => e.state === 'shown').length;
+      const status = document.querySelector('#tr-status'), meter = document.querySelector('#tr-meter');
+      if (status) status.textContent = `${ok + shown} von ${all} Buchungen${shown ? ` · ${shown} mit Lösung` : ''}`;
+      if (meter) meter.style.width = `${Math.round((ok + shown) / all * 100)}%`;
+      if (ok + shown === all && !cur.finished) finish();
+    }
+
+    // ---- Fields ----
+    const fieldEl = (box, k, r) => box.querySelector(`.tr-in[data-k="${k}"][data-r="${r}"]`);
+    function setField(el, state) {
+      const was = el.classList.contains('ok') ? 'ok' : el.classList.contains('bad') ? 'bad' : '';
+      if (was === state) return;
+      el.classList.remove('ok', 'bad');
+      if (!state) return;
+      void el.offsetWidth;
+      el.classList.add(state);
+    }
+    function grade(box, { settle = true } = {}) {
+      const e = cur.entries[Number(box.dataset.e)];
+      if (!e || e.state !== 'open') return;
+      const g = T.gradeBooking(e.b, e, cur.c.names);
+      let bad = false;
+      g.fields.forEach((f, r) => { for (const k of ['sa', 'sb', 'ha', 'hb']) { const el = fieldEl(box, k, r); if (!el) continue; const state = f[k] === 'bad' && !settle && document.activeElement === el ? '' : f[k]; setField(el, state); if (state === 'bad') bad = true; } });
+      box.querySelectorAll('[data-action="t-effect"]').forEach(btn => { btn.classList.remove('ok', 'bad'); if (btn.dataset.v === e.effect && g.effect) btn.classList.add(g.effect); });
+      if (g.effect === 'bad') bad = true;
+      const noneBtn = box.querySelector('.tr-none');
+      if (noneBtn) { noneBtn.classList.remove('ok', 'bad'); if (g.none) noneBtn.classList.add(g.none); if (g.none === 'bad') bad = true; }
+      box.querySelector('.tr-msg').textContent = g.msgs[0] || '';
+      if (bad) e.wrong = true;
+      if (g.complete) solved(box, e);
+    }
+    function burst(box) {
+      if (reduced()) return;
+      const host = box.querySelector('.tr-burst');
+      host.innerHTML = Array.from({ length: 12 }, (_, i) => { const a = i / 12 * Math.PI * 2, d = 34 + (i % 3) * 14; return `<i style="--x:${(Math.cos(a) * d).toFixed(1)}px;--y:${(Math.sin(a) * d).toFixed(1)}px;--d:${i * 12}ms"></i>`; }).join('');
+      setTimeout(() => { host.innerHTML = ''; }, 900);
+    }
+    function lock(box) { box.querySelectorAll('input, .tr-effect button, .tr-none').forEach(el => { if (el.tagName === 'INPUT') el.readOnly = true; else el.disabled = true; }); box.querySelectorAll('.tr-tools').forEach(el => el.remove()); }
+    function solved(box, e) {
+      e.state = 'ok'; cur.touched = true;
+      box.classList.add('done'); lock(box); burst(box);
+      if (box.contains(document.activeElement) && !fine()) document.activeElement.blur?.();
+      box.querySelector('.tr-msg').textContent = e.wrong || e.helped ? 'Stimmt jetzt.' : ['Richtig gebucht.', 'Genau so.', 'Sitzt.'][Math.floor(Math.random() * 3)];
+      countAnswer(); save();
+      progress();
+      // On a computer, jump to the next open booking like in the book's trainer.
+      if (fine() && !cur.finished) { const next = document.querySelector('.tr-book:not(.done):not(.shown) .tr-in'); next?.focus({ preventScroll: true }); next?.closest('.tr-book')?.scrollIntoView?.({ block: 'center', behavior: reduced() ? 'auto' : 'smooth' }); }
+    }
+    function fill(box, e) {
+      const b = e.b, names = cur.c.names;
+      const put = (k, r, v) => { const el = fieldEl(box, k, r); if (el) { el.value = v; e.rows[r][k] = v; } };
+      if (b.none) e.none = true;
+      b.soll.forEach((l, r) => { put('sa', r, T.kontoLabel(l.acc, names)); put('sb', r, eur(l.amt)); });
+      b.haben.forEach((l, r) => { put('ha', r, T.kontoLabel(l.acc, names)); put('hb', r, eur(l.amt)); });
+      e.effect = b.effect;
+      box.querySelectorAll('[data-action="t-effect"]').forEach(btn => btn.setAttribute('aria-pressed', String(btn.dataset.v === b.effect)));
+      box.querySelector('.tr-none')?.setAttribute('aria-pressed', String(!!b.none));
+    }
+    function solve(box) {
+      const e = entryOf(box); if (!e || e.state !== 'open') return;
+      fill(box, e); e.state = 'shown'; cur.touched = true;
+      box.querySelectorAll('.tr-in').forEach(el => el.classList.remove('ok', 'bad'));
+      box.classList.add('shown'); lock(box);
+      box.querySelector('.tr-msg').textContent = e.b.none ? 'Hier ist keine Buchung nötig.' : '';
+      const more = box.querySelector('.tr-more'), lines = [...e.b.hint, ...e.b.calc];
+      more.hidden = !lines.length; more.innerHTML = lines.length ? `<ul>${lines.map(x => `<li>${rich(x)}</li>`).join('')}</ul>` : '';
+      progress();
+    }
+    function hint(box, btn) {
+      const e = entryOf(box); if (!e || e.state !== 'open') return;
+      const all = [...e.b.hint, ...e.b.calc];
+      if (!all.length) { box.querySelector('.tr-msg').textContent = 'Lies den Beleg noch einmal genau: Was kommt ins Soll, was ins Haben?'; return; }
+      e.hints = Math.min(all.length, e.hints + 1); e.helped = true;
+      const more = box.querySelector('.tr-more');
+      more.hidden = false; more.innerHTML = `<ul>${all.slice(0, e.hints).map(x => `<li>${rich(x)}</li>`).join('')}</ul>`;
+      if (e.hints >= all.length) btn.remove();
+    }
+    function finish() {
+      cur.finished = true;
+      const all = cur.entries.length, first = cur.entries.filter(e => e.state === 'ok' && !e.wrong && !e.helped).length, shown = cur.entries.filter(e => e.state === 'shown').length, ok = all - shown;
+      const pct = Math.round(first / all * 100), id = cur.c.id, st = stats(), old = st[id] || { runs: 0, perfect: 0, bookings: 0, best: 0, at: 0 };
+      st[id] = { runs: old.runs + 1, perfect: old.perfect + (first === all ? 1 : 0), bookings: old.bookings + ok, best: Math.max(old.best, pct), at: Date.now() };
+      save();
+      const mins = Math.max(1, Math.round((Date.now() - cur.started) / 60000));
+      document.querySelector('#main').insertAdjacentHTML('beforeend', `<section class="result-page qa-test-result tr-result"><div class="qa-score-ring">${ring(pct, 'auf Anhieb')}</div><h1>${pct === 100 ? 'Alles auf Anhieb' : pct >= 70 ? 'Stark gebucht' : 'Fall gelöst'}<span class="blue-dot">.</span></h1><p>${first} von ${all} Buchungen auf Anhieb richtig${shown ? `, ${shown} mit Lösung` : ''} · ${mins} ${mins === 1 ? 'Minute' : 'Minuten'}</p><div class="result-actions"><button class="button primary" data-action="t-new">Neuer Fall ${icon('arrow')}</button><button class="button secondary" data-action="t-home">Andere Fälle</button></div></section>`);
+      setTimeout(() => document.querySelector('.tr-result')?.scrollIntoView?.({ block: 'center', behavior: reduced() ? 'auto' : 'smooth' }), 350);
+    }
+
+    // ---- Account suggestions ----
+    function suggest(input) {
+      const list = input.parentElement.querySelector('.tr-dd'), hits = T.searchKonten(input.value, cur.c.names, 7);
+      if (!hits.length || input.readOnly) { list.hidden = true; input.setAttribute('aria-expanded', 'false'); return; }
+      list.innerHTML = hits.map((h, i) => `<li role="option" data-no="${h.no}" class="${i ? '' : 'active'}" aria-selected="${!i}"><b>${h.no}</b><span>${esc(h.name)}</span></li>`).join('');
+      list.hidden = false; input.setAttribute('aria-expanded', 'true');
+    }
+    function closeList(input) { const list = input.parentElement?.querySelector('.tr-dd'); if (list) list.hidden = true; input.setAttribute?.('aria-expanded', 'false'); }
+    function choose(input, no) {
+      const e = entryOf(input); if (!e) return;
+      input.value = T.kontoLabel(no, cur.c.names);
+      e.rows[Number(input.dataset.r)][input.dataset.k] = input.value; cur.touched = true;
+      closeList(input);
+      grade(input.closest('.tr-book'), { settle: false });
+      input.closest('.tr-line')?.querySelector('.tr-v')?.focus();
+    }
+    function commit(input) {
+      const e = entryOf(input); if (!e || e.state !== 'open') return;
+      if (input.classList.contains('tr-a')) {
+        const no = T.resolveAcc(input.value, cur.c.names);
+        if (no && (T.kontoName(no, cur.c.names))) input.value = T.kontoLabel(no, cur.c.names);
+      } else {
+        const v = T.parseAmount(input.value);
+        if (v !== null && input.value.trim()) input.value = eur(v);
+      }
+      e.rows[Number(input.dataset.r)][input.dataset.k] = input.value;
+      grade(input.closest('.tr-book'));
+    }
+    // One set of listeners for the whole app; they only act while a case is open.
+    document.addEventListener('input', ev => {
+      const el = ev.target; if (!cur || !el.classList?.contains('tr-in')) return;
+      const e = entryOf(el); if (!e || e.state !== 'open') return;
+      e.rows[Number(el.dataset.r)][el.dataset.k] = el.value; cur.touched = true;
+      el.classList.remove('ok', 'bad');
+      if (el.classList.contains('tr-a')) suggest(el);
+    });
+    document.addEventListener('focusout', ev => {
+      const el = ev.target; if (!cur || !el.classList?.contains('tr-in')) return;
+      if (el.classList.contains('tr-a')) setTimeout(() => closeList(el), 0);
+      commit(el);
+    });
+    document.addEventListener('pointerdown', ev => {
+      const li = ev.target.closest?.('.tr-dd li'); if (!li || !cur) return;
+      ev.preventDefault();
+      choose(li.closest('.tr-acc').querySelector('.tr-a'), li.dataset.no);
+    });
+    function moveNext(el) {
+      const box = el.closest('.tr-book'), all = [...box.querySelectorAll('.tr-in:not([readonly])')], i = all.indexOf(el);
+      if (i >= 0 && i < all.length - 1) return all[i + 1].focus();
+      commit(el);
+      const next = [...document.querySelectorAll('.tr-book:not(.done):not(.shown)')].find(b => b !== box)?.querySelector('.tr-in');
+      next?.focus();
+    }
+    function key(ev) {
+      const el = ev.target;
+      if (!cur || !el.classList?.contains('tr-in')) return;
+      const list = el.parentElement?.querySelector?.('.tr-dd'), open = list && !list.hidden;
+      if (el.classList.contains('tr-a') && open && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) {
+        ev.preventDefault();
+        const items = [...list.children], i = items.findIndex(x => x.classList.contains('active')), j = (i + (ev.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items.forEach((x, n) => { x.classList.toggle('active', n === j); x.setAttribute('aria-selected', String(n === j)); });
+        items[j].scrollIntoView?.({ block: 'nearest' });
+        return;
+      }
+      if (ev.key === 'Escape' && open) { ev.preventDefault(); closeList(el); return; }
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        if (el.classList.contains('tr-a') && open) { const act = list.querySelector('.active') || list.firstElementChild; if (act) return choose(el, act.dataset.no); }
+        return moveNext(el);
+      }
+      if (ev.key === 'Tab' && el.classList.contains('tr-a') && open && !ev.shiftKey && !/^\d{4,5}\b/.test(el.value.trim())) {
+        const act = list.querySelector('.active'); if (act) { el.value = T.kontoLabel(act.dataset.no, cur.c.names); entryOf(el).rows[Number(el.dataset.r)][el.dataset.k] = el.value; }
+      }
+    }
+
+    // ---- Actions ----
+    const leaveCase = fn => (cur && cur.touched && !cur.finished ? confirm('Fall verlassen?', 'Die richtig gebuchten Belege dieses Falls werden nicht als gelöster Fall gezählt.', 'Verlassen', fn) : fn());
+    function action(name, btn) {
+      const box = btn.closest('.tr-book');
+      switch (name) {
+        case 't-home': return leaveCase(home);
+        case 't-exit': return leaveCase(home);
+        case 't-open': return open(btn.dataset.tpl);
+        case 't-random': return open(T.TEMPLATES[Math.floor(Math.random() * T.TEMPLATES.length)].id);
+        case 't-new': { const id = cur?.c.id || T.TEMPLATES[0].id; return leaveCase(() => { open(id); window.scrollTo?.({ top: 0, behavior: reduced() ? 'auto' : 'smooth' }); }); }
+        case 't-effect': { const e = entryOf(btn); if (!e || e.state !== 'open') return; e.effect = btn.dataset.v; cur.touched = true; box.querySelectorAll('[data-action="t-effect"]').forEach(b => b.setAttribute('aria-pressed', String(b === btn))); return grade(box); }
+        case 't-none': { const e = entryOf(btn); if (!e || e.state !== 'open') return; e.none = !e.none; cur.touched = true; btn.setAttribute('aria-pressed', String(e.none)); box.classList.toggle('is-none', e.none); return grade(box); }
+        case 't-hint': return hint(box, btn);
+        case 't-solve': return solve(box);
+        case 't-check-all': {
+          if (!cur) return;
+          document.querySelectorAll('.tr-book').forEach(b => grade(b));
+          const open = document.querySelector('.tr-book:not(.done):not(.shown)');
+          if (!open) return;
+          const left = cur.entries.filter(e => e.state === 'open').length;
+          toast(`${left} ${left === 1 ? 'Buchung fehlt' : 'Buchungen fehlen'} noch.`);
+          open.scrollIntoView?.({ block: 'center', behavior: reduced() ? 'auto' : 'smooth' });
+          return open.querySelector('.tr-in:not(.ok)')?.focus({ preventScroll: true });
+        }
+      }
+    }
+    return { home, leave, action, key, views: [VIEW], course, busy: () => !!(cur && cur.touched && !cur.finished), open };
+  } };
+})();
