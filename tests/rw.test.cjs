@@ -100,11 +100,12 @@ function app(store = new Map()) {
   const localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
   document.querySelectorAll('dialog').forEach(d => { d.showModal = () => d.setAttribute('open', ''); d.close = () => d.removeAttribute('open'); });
   const context = vm.createContext({ window, document, console, crypto: webcrypto, localStorage, requestAnimationFrame: fn => fn(), setTimeout: () => 1, clearTimeout: () => {}, Blob, URL, TextDecoder });
-  for (const script of ['theme.js', 'core.js', 'seed.js', 'mathcore.js', 'math.js', 'rwcore.js', 'rw.js', 'trainer.js', 'drill.js', 'app.js', 'effects.js', 'calc.js']) {
+  for (const script of ['theme.js', 'core.js', 'seed.js', 'mathcore.js', 'math.js', 'rwcore.js', 'rw.js', 'bwpcore.js', 'bwp.js', 'trainer.js', 'drill.js', 'app.js', 'effects.js', 'calc.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, script), 'utf8'), context, { filename: script });
     if (script === 'core.js') window.WWCore = context.WWCore;
     if (script === 'mathcore.js') window.WWMath = context.WWMath;
     if (script === 'rwcore.js') window.WWRw = context.WWRw;
+    if (script === 'bwpcore.js') window.WWBwp = context.WWBwp;
   }
   const $ = s => document.querySelector(s);
   const click = sel => { const el = typeof sel === 'string' ? $(sel) : sel; assert.ok(el, `Missing element ${sel}`); el.dispatchEvent(new window.Event('click', { bubbles: true, cancelable: true })); };

@@ -314,6 +314,7 @@
     if (base?.catalogs || other?.catalogs) out.catalogs = mergeCatalogs(base?.catalogs, other?.catalogs);
     if (base?.math || other?.math) out.math = mergeMath(base?.math, other?.math);
     if (base?.rw || other?.rw) out.rw = mergeMath(base?.rw, other?.rw);
+    if (base?.bwp || other?.bwp) out.bwp = mergeMath(base?.bwp, other?.bwp);
     if (base?.rwk || other?.rwk) {
       // "Buchungen merken" cards: per card the newer entry wins.
       out.rwk = { ...(other?.rwk || {}) };
