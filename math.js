@@ -111,6 +111,22 @@
     const row = t.head === 'row';
     return `<div class="m-table-wrap"><table class="m-table${row ? ' rows' : ''}"><tbody>${t.rows.map((r, i) => `<tr>${r.map((c, j) => (row ? i === 0 : j === 0) ? `<th scope="${row ? 'col' : 'row'}">${rich(c)}</th>` : `<td${c === '?' ? ' class="m-q"' : ''}>${rich(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   }
+  // A worksheet like the book's Excel solutions: column letters, row numbers, given data as text and the answer fields in the cells.
+  function sheetHtml(a, fieldHtml) {
+    const esc = M.escHtml, g = a.grid, byKey = Object.fromEntries(a.fields.map(f => [f.key, f])), cols = g.head.length - 1, letters = 'ABCDEFGH';
+    let n = 1;
+    const num = () => `<th class="xl-n" scope="row">${++n}</th>`;
+    const cell = c => {
+      if (c && typeof c === 'object') { const f = byKey[c.k]; return `<td class="xl-in${f.type === 'sel' ? ' xl-sel' : ''}"${c.span ? ` colspan="${c.span}"` : ''}>${fieldHtml(f)}${c.note ? `<span class="xl-note">${rich(c.note)}</span>` : ''}</td>`; }
+      return `<td>${rich(String(c ?? ''))}</td>`;
+    };
+    const headRow = `<tr class="xl-head">${num()}${g.head.map(h => `<td>${esc(h)}</td>`).join('')}</tr>`;
+    const rows = g.rows.map(r => {
+      if (r.head) return `<tr class="xl-head">${num()}<td>${esc(r.label)}</td>${r.cells.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`;
+      return `<tr class="${r.data ? 'xl-data' : r.total ? 'xl-total' : r.sub ? 'xl-sub' : 'xl-calc'}">${num()}<td class="xl-label">${rich(r.label)}</td>${r.cells.map(cell).join('')}</tr>`;
+    }).join('');
+    return `<div class="xl-wrap"><table class="xl"><thead><tr><th class="xl-corner"></th>${g.head.map((_, i) => `<th>${letters[i]}</th>`).join('')}</tr></thead><tbody><tr class="xl-title"><th class="xl-n" scope="row">1</th><td colspan="${cols + 1}">${esc(g.title)}</td></tr>${headRow}${rows}</tbody></table></div>`;
+  }
   const svgPos = (svg, e) => { const r = svg.getBoundingClientRect(), W = Number(svg.dataset.w), H = Number(svg.dataset.h); return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height }; };
   function onDrag(svg, handle, end) {
     let active = false;
@@ -158,6 +174,7 @@
       if (course.art) return course.art(reduced());
       return `<div class="hero-art m-art" aria-hidden="true"><svg viewBox="0 0 224 130"><path class="m-art-grid" d="M0 22H224M0 58H224M0 94H224M46 0V130M84 0V130M122 0V130M160 0V130M198 0V130"/><path class="m-art-curve" d="${path}"/><g transform="translate(${n1(X(2.7))} ${n1(f(2.7))})">${anim[0] || ''}<g>${anim[1] || ''}<line class="m-art-tan" x1="-62" x2="62" y1="0" y2="0"/><circle class="m-art-dot" r="5.5"/></g></g></svg></div>`;
     }
+    const topicGroups = () => { const out = []; for (const t of TOPICS) { const last = out.at(-1); if (last && last[0] === (t.group || '')) last[1].push(t); else out.push([t.group || '', [t]]); } return out; };
     function home() {
       leave(); shell(K, 'Übersicht');
       const p = progress(), s = E.stats(p), own = ctx.catalogs();
@@ -166,7 +183,7 @@
         <section class="dashboard-grid"><div class="focus-card m-focus${course.focusClass ? ` ${course.focusClass}` : ''}"><div class="focus-copy"><div class="hero-tag"><span class="pulse-dot"></span>${started ? 'EMPFOHLEN' : 'LOS GEHT’S'}</div><h2>Gemischt üben</h2><p>8 Aufgaben aus allen Themen, ${started ? `mehr von „${esc(weakest.title)}“` : 'die Schwächen zuerst'}. Fühlt sich schwerer an, bleibt aber länger.</p><div class="hero-actions"><button class="button white" data-action="m-mix">${icon('spark')}Üben${icon('arrow')}</button><button class="button glass" data-action="m-test">${icon('clock')}Test simulieren</button></div></div>${heroArt()}</div>
         <aside class="progress-card qa-progress-card"><div class="section-kicker">DEIN STAND ${icon('chart')}</div><div class="qa-progress-body">${ring(s.progress, 'gelernt')}${levelLegend(s)}</div><div class="stat-duo"><div><span class="stat-icon flame">${icon('flame')}</span><strong>${streak()} <small>${streak() === 1 ? 'Tag' : 'Tage'}</small></strong><p>in Folge gelernt</p></div><div><span class="stat-icon lavender">${icon('clock')}</span><strong>${p.test.at ? `${p.test.last}<small>%</small>` : '–'}</strong><p>${p.test.at ? 'letzter Test' : 'noch kein Test'}</p></div></div></aside></section>
         ${course.homeExtra ? course.homeExtra() : ''}
-        <section class="library-section"><div class="section-heading"><div><h2>Themen <span class="count-badge">${TOPICS.length}</span></h2></div></div><div class="set-grid m-topic-grid">${TOPICS.map((t, i) => { const sc = score(t.id); return `<article class="set-card" style="--i:${i}"><div class="set-card-top"><div class="set-emoji tone-${i % 3}">${fig(t.id)}</div>${levelChip(t.id)}</div><button class="set-title" data-action="m-topic" data-topic="${t.id}">${esc(t.title)}</button><div class="set-meta">${esc(t.sub)}</div><div class="set-progress-label"><span>Fortschritt</span><strong>${sc}%</strong></div><div class="mini-progress"><span style="width:${sc}%"></span></div><div class="set-card-footer"><button class="text-button" data-action="m-topic" data-topic="${t.id}">Verstehen und üben</button><button class="round-button" data-action="m-start" data-topic="${t.id}" aria-label="${esc(t.title)} üben">${icon('arrow')}</button></div></article>`; }).join('')}</div></section>
+        ${topicGroups().map(([group, list], gi) => `<section class="library-section${gi ? ' m-group' : ''}"><div class="section-heading"><div><h2>${esc(group || 'Themen')} <span class="count-badge">${list.length}</span></h2></div></div><div class="set-grid m-topic-grid">${list.map(t => { const i = TOPICS.indexOf(t), sc = score(t.id); return `<article class="set-card" style="--i:${i}"><div class="set-card-top"><div class="set-emoji tone-${i % 3}">${fig(t.id)}</div>${levelChip(t.id)}</div><button class="set-title" data-action="m-topic" data-topic="${t.id}">${esc(t.title)}</button><div class="set-meta">${esc(t.sub)}</div><div class="set-progress-label"><span>Fortschritt</span><strong>${sc}%</strong></div><div class="mini-progress"><span style="width:${sc}%"></span></div><div class="set-card-footer"><button class="text-button" data-action="m-topic" data-topic="${t.id}">Verstehen und üben</button><button class="round-button" data-action="m-start" data-topic="${t.id}" aria-label="${esc(t.title)} üben">${icon('arrow')}</button></div></article>`; }).join('')}</div></section>`).join('')}
         ${own.length ? `<section class="library-section"><div class="section-heading"><div><h2>Eigene Fragenkataloge <span class="count-badge">${own.length}</span></h2></div></div><div class="set-grid">${own.map(c => `<article class="set-card"><div class="set-card-top"><div class="set-emoji tone-0">${esc(c.emoji)}</div></div><button class="set-title" data-action="qa-open" data-catalog="${esc(c.id)}">${esc(c.title)}</button><div class="set-card-footer"><button class="text-button" data-action="qa-open" data-catalog="${esc(c.id)}">Fragen ansehen</button></div></article>`).join('')}</div></section>` : ''}`;
     }
     function topicPage(id) {
@@ -193,11 +210,13 @@
     // ---- Interactive answers ----
     function answerHtml(t, pid) {
       const a = t.answer;
-      if (a.type === 'fields') return `<div class="m-fields">${a.fields.map(f => {
+      const fieldHtml = f => {
         const id = `m-${pid}-${f.key}`;
         if (f.type === 'sel') return `<div class="m-field" data-key="${f.key}"><label class="m-field-label" for="${id}">${rich(f.label)}</label><div class="m-input m-select"><select id="${id}"><option value="">Wählen …</option>${f.options.map((o, i) => `<option value="${i}">${esc(o)}</option>`).join('')}</select></div><p class="m-field-msg"></p></div>`;
         return `<div class="m-field" data-key="${f.key}"><label class="m-field-label" for="${id}">${rich(f.label)}</label><div class="m-input"><button type="button" class="m-plusminus" data-action="m-sign" tabindex="-1" aria-label="Vorzeichen wechseln">±</button><input id="${id}" class="m-num" type="text" inputmode="decimal" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">${f.unit ? `<span class="m-unit">${rich(f.unit)}</span>` : ''}</div><p class="m-field-msg"></p></div>`;
-      }).join('')}</div>`;
+      };
+      if (a.type === 'fields' && a.grid) return sheetHtml(a, fieldHtml);
+      if (a.type === 'fields') return `<div class="m-fields">${a.fields.map(fieldHtml).join('')}</div>`;
       if (a.type === 'choice' || a.type === 'multi') {
         const graphs = a.options.some(o => o.plot), size = phone() ? { W: 280, H: 190, mini: true } : { W: 340, H: 200, mini: true };
         return `<div class="qa-choices m-choices${graphs ? ' m-choices-graph' : ''}">${a.options.map((o, i) => `<button class="choice-button qa-choice${o.plot ? ' m-graph-opt' : ''}" data-action="m-opt" data-part="${pid}" data-i="${i}" aria-pressed="false"><span class="choice-key">${a.type === 'multi' ? '' : i + 1}</span><span>${o.plot ? plotSvg(o.plot, size) : rich(o.text)}</span><span class="choice-result"></span></button>`).join('')}</div>`;
@@ -543,6 +562,7 @@
 
     // ---- Labs: playing with a graph before practising ----
     function mountLab(kind, host) {
+      if (course.labs?.[kind]) { labStop = course.labs[kind](host, { esc, rich, icon, tableHtml, reduced, animate, euro }) || null; return; }
       if (kind === 'secant') return labSecant(host);
       if (kind === 'angle') return labAngle(host);
       if (kind === 'afa') return labAfa(host);

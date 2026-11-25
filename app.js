@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const C = window.WWCore, M = window.WWMath, RW_CORE = window.WWRw, $ = s => document.querySelector(s), KEY = 'wortwechsel.v1';
+  const C = window.WWCore, M = window.WWMath, RW_CORE = window.WWRw, BWP_CORE = window.WWBwp, $ = s => document.querySelector(s), KEY = 'wortwechsel.v1';
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const icons = {
     grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
@@ -79,6 +79,7 @@
   data.rw = RW_CORE.validateProgress(data.rw);
   data.rwt = RW_CORE.trainer.validate(data.rwt);
   data.rwk = window.WWDrill ? window.WWDrill.validate(data.rwk) : (data.rwk || {});
+  data.bwp = BWP_CORE.validateProgress(data.bwp);
   let selectedId = data.selectedId || data.sets[0]?.id, view = 'library', session = null, flash = null, termSearch = '', librarySearch = '';
   let importDraft = null, importTarget = null, importRaw = '', importWarnings = [], toastTimer, fileLoadVersion = 0;
   const currentSet = () => data.sets.find(s => s.id === selectedId) || data.sets[0];
@@ -117,7 +118,7 @@
     document.querySelectorAll('.nav-item[data-view]').forEach(el => el.classList.toggle('active', view === el.dataset.view || (el.dataset.view === 'catalogs' && view === 'catalog') || view === `${el.dataset.view}-topic`));
     $('#nav-rw-trainer').classList.toggle('active', view === 'rw-trainer');
     $('#nav-rw-drill')?.classList.toggle('active', view === 'rw-drill');
-    for (const K of ['math', 'rw']) for (const part of ['mix', 'test', 'formulas']) $(`#nav-${K}-${part}`).classList.toggle('active', view === `${K}-${part === 'mix' ? 'practice' : part}`);
+    for (const K of ['math', 'rw', 'bwp']) for (const part of ['mix', 'test', 'formulas']) $(`#nav-${K}-${part}`).classList.toggle('active', view === `${K}-${part === 'mix' ? 'practice' : part}`);
     $('#nav-practice').classList.toggle('active', view === 'learn');
     $('#nav-qa-learn').classList.toggle('active', view === 'qa-learn');
     $('#nav-qa-test').classList.toggle('active', view === 'qa-test');
@@ -501,14 +502,14 @@
   }
   // ---- Subjects (Fächer). Spanisch keeps the vocabulary tools, every other subject is made of question catalogues. ----
   const VOCAB = 'Spanisch', VOCAB_VIEWS = ['library', 'set', 'learn', 'flashcards', 'dialogs', 'grammar'], SUBJECT_KEY = 'wortwechsel.subject';
-  const MATH = 'Mathe', RW = 'Rechnungswesen';
+  const MATH = 'Mathe', RW = 'Rechnungswesen', BWP = 'BWP';
   const QA_LEVELS = ['Neu', 'Üben', 'Fast', 'Sicher'];
-  const SUBJECT_EMOJI = { geschichte: '🏛️', gpb: '🏛️', biologie: '🧬', bio: '🧬', chemie: '⚗️', physik: '🔭', mathe: '📐', mathematik: '📐', rechnungswesen: '🧾', rw: '🧾', rechnungswesen: '🧾', rw: '🧾', geografie: '🌍', geographie: '🌍', gwk: '🌍', deutsch: '📖', englisch: '💂', wirtschaft: '📈', bwl: '📈', recht: '⚖️', informatik: '💻', religion: '🕊️', ethik: '🕊️', musik: '🎵', kunst: '🎨', psychologie: '🧠', philosophie: '💭', politik: '🗳️' };
+  const SUBJECT_EMOJI = { geschichte: '🏛️', gpb: '🏛️', biologie: '🧬', bio: '🧬', chemie: '⚗️', physik: '🔭', mathe: '📐', mathematik: '📐', rechnungswesen: '🧾', rw: '🧾', bwp: '💼', geografie: '🌍', geographie: '🌍', gwk: '🌍', deutsch: '📖', englisch: '💂', wirtschaft: '📈', bwl: '📈', recht: '⚖️', informatik: '💻', religion: '🕊️', ethik: '🕊️', musik: '🎵', kunst: '🎨', psychologie: '🧠', philosophie: '💭', politik: '🗳️' };
   let subject = VOCAB, catalogId = null, qa = null, qaTest = null, qaFilter = 'all', qaDraft = null, qaEditing = null, testTimer = null;
   try { subject = localStorage.getItem(SUBJECT_KEY) || VOCAB; } catch {}
   const reduced = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const sameSubject = (a, b) => C.normalize(a) === C.normalize(b);
-  const subjectList = () => { const out = [VOCAB]; for (const c of data.catalogs) if (!out.some(s => sameSubject(s, c.subject))) out.push(c.subject); for (const s of [MATH, RW]) if (!out.some(x => sameSubject(x, s))) out.push(s); return out; };
+  const subjectList = () => { const out = [VOCAB]; for (const c of data.catalogs) if (!out.some(s => sameSubject(s, c.subject))) out.push(c.subject); for (const s of [MATH, RW, BWP]) if (!out.some(x => sameSubject(x, s))) out.push(s); return out; };
   const subjectCatalogs = (name = subject) => data.catalogs.filter(c => sameSubject(c.subject, name));
   const subjectEmoji = name => sameSubject(name, VOCAB) ? '🇪🇸' : SUBJECT_EMOJI[C.normalize(name)] || subjectCatalogs(name)[0]?.emoji || '📘';
   const currentCatalog = () => data.catalogs.find(c => c.id === catalogId);
@@ -528,12 +529,13 @@
       el.querySelectorAll('.subject-tab').forEach(tab => tab.setAttribute('aria-selected', String(sameSubject(tab.dataset.subject, subject))));
       moveSubjectThumb();
     }
-    const vocab = sameSubject(subject, VOCAB), math = sameSubject(subject, MATH), rw = sameSubject(subject, RW);
+    const vocab = sameSubject(subject, VOCAB), math = sameSubject(subject, MATH), rw = sameSubject(subject, RW), bwp = sameSubject(subject, BWP);
     if ($('#nav-vocab').hidden !== !vocab) $('#nav-vocab').hidden = !vocab;
     if ($('#nav-math').hidden !== !math) $('#nav-math').hidden = !math;
     if ($('#nav-rw').hidden !== !rw) $('#nav-rw').hidden = !rw;
     document.body.classList.toggle('subject-rw', rw);
-    if ($('#nav-qa').hidden !== (vocab || math || rw)) $('#nav-qa').hidden = vocab || math || rw;
+    if ($('#nav-bwp').hidden !== !bwp) $('#nav-bwp').hidden = !bwp;
+    if ($('#nav-qa').hidden !== (vocab || math || rw || bwp)) $('#nav-qa').hidden = vocab || math || rw || bwp;
     $('#nav-vocab-catalogs').hidden = !subjectCatalogs(VOCAB).length;
     try { localStorage.setItem(SUBJECT_KEY, subject); } catch {}
   }
@@ -1005,6 +1007,7 @@
       data.grammar = C.mergeStates({ grammar: data.grammar }, { grammar: backup.grammar }).grammar;
       if (backup.math) data.math = M.validateProgress(C.mergeMath(data.math, backup.math));
       if (backup.rw) data.rw = RW_CORE.validateProgress(C.mergeMath(data.rw, backup.rw));
+      if (backup.bwp) data.bwp = BWP_CORE.validateProgress(C.mergeMath(data.bwp, backup.bwp));
       if (backup.rwt) data.rwt = RW_CORE.trainer.validate(C.mergeStates({ rwt: data.rwt }, { rwt: RW_CORE.trainer.validate(backup.rwt) }).rwt);
       if (backup.rwk && window.WWDrill) data.rwk = window.WWDrill.validate(C.mergeStates({ rwk: data.rwk }, { rwk: window.WWDrill.validate(backup.rwk) }).rwk);
       for (const raw of Array.isArray(backup.catalogs) ? backup.catalogs : []) {
@@ -1018,7 +1021,7 @@
   }
   function download(name, text, type) { const blob = new Blob([text], { type }); const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000); }
   function exportSet() { const s = currentSet(); download(s.title.replace(/[<>:"/\\|?*]/g, '-') + '.txt', '\uFEFF' + C.serializeTerms(s.terms), 'text/plain;charset=utf-8'); toast('Vokabelliste exportiert.'); }
-  function exportBackup() { download(`wortwechsel-sicherung-${localDate()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sets: data.sets, dialogs: data.dialogs, grammar: data.grammar, catalogs: data.catalogs, math: data.math, rw: data.rw, rwt: data.rwt, rwk: data.rwk, settings: data.settings }, null, 2), 'application/json'); toast('Sicherung exportiert. Über „Neues Lernset“ wieder importieren.'); }
+  function exportBackup() { download(`wortwechsel-sicherung-${localDate()}.json`, JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sets: data.sets, dialogs: data.dialogs, grammar: data.grammar, catalogs: data.catalogs, math: data.math, rw: data.rw, rwt: data.rwt, bwp: data.bwp, rwk: data.rwk, settings: data.settings }, null, 2), 'application/json'); toast('Sicherung exportiert. Über „Neues Lernset“ wieder importieren.'); }
   function confirmAction(title, text, label, fn) {
     const d = $('#confirm-dialog');
     d.innerHTML = `<div class="dialog-header"><h2 id="confirm-heading">${esc(title)}</h2><button class="icon-button" data-close="confirm-dialog" aria-label="Schließen">${icon('close')}</button></div><p>${esc(text)}</p><div class="dialog-footer"><button class="button secondary" data-close="confirm-dialog">Abbrechen</button><button class="button primary" id="confirm-action">${esc(label)}</button></div>`;
@@ -1032,9 +1035,10 @@
   };
   const mathApp = window.WWMathApp.create({ ...courseCtx, catalogs: () => subjectCatalogs(MATH) }, window.WWMathCourse);
   const rwApp = window.WWMathApp.create({ ...courseCtx, catalogs: () => subjectCatalogs(RW) }, window.WWRwCourse);
+  const bwpApp = window.WWMathApp.create({ ...courseCtx, catalogs: () => subjectCatalogs(BWP) }, window.WWBwpCourse);
   const trainerApp = window.WWTrainer.create({ ...courseCtx });
   const drillApp = window.WWDrill?.create({ ...courseCtx });
-  const courseApps = [mathApp, rwApp, trainerApp, drillApp].filter(Boolean);
+  const courseApps = [mathApp, rwApp, bwpApp, trainerApp, drillApp].filter(Boolean);
   function appForView(v) { return courseApps.find(a => a.views.includes(v)); }
   function appForSubject(name = subject) { return courseApps.find(a => sameSubject(a.course.subject, name)); }
   document.addEventListener('click', e => {
@@ -1185,7 +1189,7 @@
     snapshot: () => data,
     canApply: () => !storageBlocked && !session?.current && !dlg && !gram && !qa && !qaTest && !courseApps.some(a => a.busy()) && !document.querySelector('dialog[open]'),
     apply(raw) {
-      const next = hydrate(raw); next.dialogs = mergeDialogs(next.dialogs); next.grammar = C.validateGrammarProgress(next.grammar); next.catalogs = withCatalogSeeds(next.catalogs); next.math = M.validateProgress(next.math); next.rw = RW_CORE.validateProgress(next.rw); next.rwt = RW_CORE.trainer.validate(next.rwt); next.rwk = window.WWDrill ? window.WWDrill.validate(next.rwk) : (next.rwk || {});
+      const next = hydrate(raw); next.dialogs = mergeDialogs(next.dialogs); next.grammar = C.validateGrammarProgress(next.grammar); next.catalogs = withCatalogSeeds(next.catalogs); next.math = M.validateProgress(next.math); next.rw = RW_CORE.validateProgress(next.rw); next.rwt = RW_CORE.trainer.validate(next.rwt); next.bwp = BWP_CORE.validateProgress(next.bwp); next.rwk = window.WWDrill ? window.WWDrill.validate(next.rwk) : (next.rwk || {});
       data = next;
       if (!data.sets.some(s => s.id === selectedId)) selectedId = data.selectedId && data.sets.some(s => s.id === data.selectedId) ? data.selectedId : data.sets[0]?.id;
       applyingRemote = true; save(); applyingRemote = false;

@@ -10,7 +10,7 @@
   <meta name="format-detection" content="telephone=no">
   <link rel="apple-touch-icon" href="icon.svg">
   <meta name="theme-color" content="#0d0d0d" id="theme-color">
-  <meta name="description" content="Vokabeln, Dialoge, Fragenkataloge, Mathe und Rechnungswesen lernen und Tests simulieren.">
+  <meta name="description" content="Vokabeln, Dialoge, Fragenkataloge, Mathe, Rechnungswesen und BWP lernen und Tests simulieren.">
   <title>Wortwechsel · Dein Lerntrainer</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <script src="theme.js"></script>
@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="progress.css">
   <link rel="stylesheet" href="calc.css">
   <link rel="stylesheet" href="select.css">
+  <link rel="stylesheet" href="bwp.css">
   <link rel="stylesheet" href="hover.css">
   <link rel="stylesheet" href="mobile.css">
   <script src="core.js" defer></script>
@@ -31,6 +32,8 @@
   <script src="math.js" defer></script>
   <script src="rwcore.js" defer></script>
   <script src="rw.js" defer></script>
+  <script src="bwpcore.js" defer></script>
+  <script src="bwp.js" defer></script>
   <script src="trainer.js" defer></script>
   <script src="drill.js" defer></script>
   <script src="app.js" defer></script>
@@ -76,6 +79,12 @@
           <button class="nav-item" id="nav-rw-mix" data-action="m-mix" data-short="Üben"><span data-icon="spark"></span>Gemischt üben</button>
           <button class="nav-item" id="nav-rw-test" data-action="m-test" data-short="Test"><span data-icon="clock"></span>Test simulieren</button>
           <button class="nav-item" id="nav-rw-formulas" data-action="m-formulas" data-short="Überblick"><span data-icon="book"></span>Überblick</button>
+        </div>
+        <div class="nav-group" id="nav-bwp" hidden>
+          <button class="nav-item" data-view="bwp" data-action="m-home" data-short="Übersicht"><span data-icon="grid"></span>Übersicht</button>
+          <button class="nav-item" id="nav-bwp-mix" data-action="m-mix" data-short="Üben"><span data-icon="spark"></span>Gemischt üben</button>
+          <button class="nav-item" id="nav-bwp-test" data-action="m-test" data-short="Test"><span data-icon="clock"></span>Test simulieren</button>
+          <button class="nav-item" id="nav-bwp-formulas" data-action="m-formulas" data-short="Formeln"><span data-icon="book"></span>Formeln</button>
         </div>
       </nav>
       <div class="sidebar-bottom">
