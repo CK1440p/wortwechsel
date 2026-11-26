@@ -36,6 +36,19 @@
 .xl-title td{white-space:normal}
 .xl td.xl-label{hyphens:auto;overflow-wrap:break-word}
 
+/* ---- Focus switch (Nur SA-Stoff) ---- */
+.m-focus-switch{display:flex;align-items:center;gap:14px;width:100%;margin:0 0 18px;padding:14px 18px;border:1px solid var(--border);border-radius:18px;background:var(--surface);color:var(--text);text-align:left;cursor:pointer;transition:border-color .25s,background .25s}
+.m-focus-switch strong{display:block;font-size:15px}
+.m-focus-switch small{display:block;margin-top:2px;font-size:13px;line-height:1.45;color:var(--muted)}
+.m-switch{flex:none;position:relative;width:46px;height:28px;border-radius:14px;background:var(--border);transition:background .3s var(--ease)}
+.m-switch i{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 4px #0003;transition:transform .35s var(--ease)}
+.m-focus-switch[aria-checked="true"]{border-color:color-mix(in srgb,var(--p-ok) 45%,var(--border));background:color-mix(in srgb,var(--p-ok) 7%,var(--surface))}
+.m-focus-switch[aria-checked="true"] .m-switch{background:var(--p-ok)}
+.m-focus-switch[aria-checked="true"] .m-switch i{transform:translateX(18px)}
+.m-off .set-card{opacity:.5;transition:opacity .3s}
+.m-off .set-card:hover,.m-off .set-card:focus-within{opacity:1}
+.m-off .section-heading h2::after{content:'zählt nicht für „Gemischt üben“ und den Test';display:block;margin-top:2px;font-size:13px;font-weight:500;color:var(--muted)}
+
 /* ---- Hero ---- */
 .bwp-focus{background:linear-gradient(125deg,#0d3646,#16736a 52%,#6fbf73)}
 .bwp-art .bwp-bar{fill:#ffffff4d}

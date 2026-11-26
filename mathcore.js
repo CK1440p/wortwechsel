@@ -1080,19 +1080,19 @@
       if (t && typeof t === 'object') out.test = { best: Math.max(0, Math.min(100, Number(t.best) || 0)), last: Math.max(0, Math.min(100, Number(t.last) || 0)), at: Number(t.at) || 0, runs: Math.max(0, Math.trunc(Number(t.runs)) || 0) };
       return out;
     }
-    function stats(progress) {
-      const out = { total: TOPIC_IDS.length, safe: 0, almost: 0, practice: 0, fresh: 0, solved: 0 };
+    function stats(progress, ids = TOPIC_IDS) {
+      const out = { total: ids.length, safe: 0, almost: 0, practice: 0, fresh: 0, solved: 0 };
       let sum = 0;
-      for (const id of TOPIC_IDS) { const t = progress.topics[id], l = levelOf(t); sum += t?.score || 0; out.solved += t?.right || 0; if (l === 3) out.safe++; else if (l === 2) out.almost++; else if (l === 1) out.practice++; else out.fresh++; }
-      out.progress = Math.round(sum / TOPIC_IDS.length);
+      for (const id of ids) { const t = progress.topics[id], l = levelOf(t); sum += t?.score || 0; out.solved += t?.right || 0; if (l === 3) out.safe++; else if (l === 2) out.almost++; else if (l === 1) out.practice++; else out.fresh++; }
+      out.progress = Math.round(sum / ids.length);
       return out;
     }
     // Mixed rounds alternate topics and lean towards weak or long-unseen ones: mixing similar problem types is what the research rewards.
-    function planMix(progress, size, random = Math.random, now = Date.now()) {
+    function planMix(progress, size, random = Math.random, now = Date.now(), ids = TOPIC_IDS) {
       const out = [];
       const weight = id => { const t = progress.topics[id]; return 8 + (100 - (t?.score || 0)) + Math.min(30, (now - (t?.at || 0)) / 864e5 * 4); };
       for (let i = 0; i < size; i++) {
-        const pool = TOPIC_IDS.filter(id => id !== out.at(-1) && out.filter(x => x === id).length < Math.ceil(size / 3));
+        const pool = ids.filter(id => id !== out.at(-1) && out.filter(x => x === id).length < Math.ceil(size / 3));
         let roll = random() * pool.reduce((s, id) => s + weight(id), 0), chosen = pool[0];
         for (const id of pool) { roll -= weight(id); if (roll <= 0) { chosen = id; break; } }
         out.push(chosen);
