@@ -613,6 +613,64 @@
     const list = r.sample(CRIT, st + 1), opts = ['Quantitativ', 'Qualitativ'];
     return { kicker: 'Entscheidungskriterien', ask: 'Ist das ein quantitatives oder ein qualitatives Kriterium?', answer: fields(list.map(([text, right], i) => selSame(`k${i}`, text, opts, right))), hints: ['Quantitativ = in Zahlen messbar (hard facts). Qualitativ = nicht in Zahlen fassbar (soft facts).'], solution: list.map(([t, k]) => `${t} → **${k}**`) };
   });
+  // Scoring-Methode (Nutzwertanalyse) like the book's Excel (S. 71): Ergebnis = Gewichtung · Punkte, Gesamt = Summe, highest Gesamt wins.
+  const SCORE = [
+    { what: 'Firmen-E-Auto', a: 'Voltara S', b: 'Ecomo 5', crit: ['Anschaffungskosten in EUR', 'Reichweite', 'Ladezeit', 'Herstellergarantie', 'Kofferraum', 'Servicenetz'] },
+    { what: 'Kassensystem', a: 'Kassa Plus', b: 'Bonfix', crit: ['Anschaffungskosten in EUR', 'Lizenzkosten pro Jahr', 'Bedienung', 'Schnittstellen', 'Support', 'Ausfallsicherheit'] },
+    { what: 'Maturaball-Location', a: 'Clubhaus Mitte', b: 'Kongresssaal Nord', crit: ['Mietkosten in EUR', 'Kapazität in Personen', 'Lage / Erreichbarkeit', 'Ambiente', 'Technik / Ausstattung', 'Floors / Räume'] },
+    { what: 'Lieferwagen', a: 'Cargoline', b: 'Transit Pro', crit: ['Anschaffungskosten in EUR', 'Amortisationsdauer in Jahren', 'Ladevolumen', 'Verbrauch', 'Herstellergarantie', 'Reparaturanfälligkeit'] },
+    { what: 'Kaffeevollautomat', a: 'Crema One', b: 'Barista X', crit: ['Anschaffungskosten in EUR', 'Kosten je Tasse', 'Geschmack', 'Reinigungsaufwand', 'Kapazität', 'Herstellergarantie'] },
+  ];
+  // Weights in 5-%-steps, each 5–35 %, together 100 %.
+  function weights(r, n) { const w = Array(n).fill(5); let rest = 100 - 5 * n; while (rest > 0) { const i = r.int(0, n - 1); if (w[i] < 35) { w[i] += 5; rest -= 5; } } return w; }
+  const sum = list => list.reduce((s, x) => s + x, 0);
+  // st 3: sometimes one weight is missing, sometimes the winner has fewer unweighted points (the weighting decides).
+  function scoreCase(r, st = 2) {
+    const twist = st === 3 && r.chance(0.5), gap = st === 3 && r.chance(0.6);
+    for (let tries = 0; tries < 200; tries++) {
+      const o = r.pick(SCORE), n = r.pick([5, 6]), pickRest = r.sample(o.crit.slice(1), n - 1), crit = [o.crit[0], ...o.crit.slice(1).filter(k => pickRest.includes(k))];
+      const w = weights(r, n), pA = crit.map(() => r.int(1, 5)), pB = crit.map(() => r.int(1, 5));
+      const eA = pA.map((p, i) => r2(w[i] * p / 100)), eB = pB.map((p, i) => r2(w[i] * p / 100)), sA = r2(sum(eA)), sB = r2(sum(eB)), rawA = sum(pA), rawB = sum(pB);
+      if (Math.abs(sA - sB) < 0.1) continue;
+      const aWins = sA > sB, flip = rawA !== rawB && (rawA > rawB) !== aWins;
+      if (twist && !flip) continue;
+      return { o, crit, w, pA, pB, eA, eB, sA, sB, rawA, rawB, miss: gap ? r.int(0, n - 1) : -1, twist: flip, win: aWins ? o.a : o.b, lose: aWins ? o.b : o.a };
+    }
+    return null;
+  }
+  const SCORE_MC = [
+    ['Warum schneidet bei der Scoring-Methode eine Alternative besser ab?', 'Sie bekommt bei den hoch gewichteten Kriterien mehr Punkte', ['Sie hat die niedrigsten Anschaffungskosten', 'Sie bekommt bei den meisten Kriterien mehr Punkte, egal wie diese gewichtet sind', 'Sie hat die längste Herstellergarantie']],
+    ['Welche Schritte der Scoring-Methode sollte man nicht allein durchführen?', 'Kriterien festlegen, gewichten und Punkte vergeben, am besten im Team mit Fachleuten', ['Die Ergebnisse in Excel addieren', 'Die Zahlen aus den Angeboten übernehmen', 'Das Häkchen bei der Entscheidung setzen']],
+    ['Warum sollte man Gewichtung und Punkte nicht allein festlegen?', 'Die Bewertung ist subjektiv. Mehrere Personen machen sie ausgewogener', ['Weil Excel sonst falsch rechnet', 'Weil das Gesetz es verlangt', 'Weil der Lieferant die Gewichtung vorgibt']],
+    ['Was ist ein Vorteil der Scoring-Methode?', 'Auch qualitative Kriterien wie Ambiente oder Service fließen in die Entscheidung ein', ['Sie liefert immer ein objektives Ergebnis', 'Sie ersetzt die Kostenvergleichsrechnung', 'Sie braucht keine Gewichtung']],
+    ['Was ist ein Nachteil der Scoring-Methode?', 'Gewichtung und Punkte sind subjektiv und können das Ergebnis verzerren', ['Sie kann nur Kosten vergleichen', 'Sie funktioniert nur mit zwei Kriterien', 'Sie berücksichtigt keine qualitativen Kriterien']],
+    ['Wie viel ergeben die Gewichtungen aller Kriterien zusammen?', '100 %', ['So viel wie die Summe der Punkte', '10 %', 'Das ist beliebig']],
+    ['Wie berechnet man das Ergebnis eines Kriteriums?', 'Gewichtung · Punkte', ['Gewichtung + Punkte', 'Punkte : Gewichtung', 'Punkte · Anzahl der Kriterien']],
+    ['Für welche Alternative entscheidet man sich bei der Scoring-Methode?', 'Für die mit dem höchsten Gesamtergebnis', ['Für die mit den meisten Punkten ohne Gewichtung', 'Für die mit dem niedrigsten Gesamtergebnis', 'Für die mit den niedrigsten Anschaffungskosten']],
+  ];
+  gen('i-scoring', 'invest', 'Scoring-Methode wie in Excel', 1, 3, 6, (r, st) => {
+    if (st === 1) { const [q, right, wrong] = r.pick(SCORE_MC); return { kicker: 'Scoring-Methode', ask: q, answer: mc(r, right, wrong), hints: ['Ergebnis = Gewichtung · Punkte, die höchste Summe gewinnt. Gewichtung und Punkte sind subjektiv.'], solution: [`**${right}**.`] }; }
+    const c = M.kit.repeat(() => scoreCase(r, st)), { o, crit, w, pA, pB } = c, miss = c.miss, others = sum(w) - (miss >= 0 ? w[miss] : 0);
+    const eTraps = (i, p) => [{ value: w[i] * p, msg: `Gewichtung als Dezimalzahl: ${w[i]} % = ${dec(w[i] / 100)}.` }, { value: w[i] / 100 + p, msg: 'Gewichtung **mal** Punkte, nicht plus.' }];
+    const sTraps = (P, E) => [{ value: sum(P), msg: 'Die **Ergebnisse** addieren, nicht die Punkte.' }, { value: sum(E) / E.length, msg: 'Nicht den Durchschnitt bilden: die Ergebnisse einfach addieren.' }];
+    const answer = fields(
+      ...(miss >= 0 ? [num('g', `Gewichtung ${crit[miss]}`, w[miss], { d: 0, unit: '%', traps: [{ value: others, msg: 'Gesucht ist der Rest auf 100 %: 100 % − Summe der anderen Gewichtungen.' }] })] : []),
+      ...crit.map((k, i) => num(`a${i}`, `Ergebnis ${o.a}: ${k}`, c.eA[i], { traps: eTraps(i, pA[i]) })),
+      ...crit.map((k, i) => num(`b${i}`, `Ergebnis ${o.b}: ${k}`, c.eB[i], { traps: eTraps(i, pB[i]) })),
+      num('sA', `Gesamt ${o.a}`, c.sA, { traps: sTraps(pA, c.eA) }), num('sB', `Gesamt ${o.b}`, c.sB, { traps: sTraps(pB, c.eB) }),
+      selSame('w', 'Entscheidung für', [o.a, o.b], c.win));
+    answer.grid = { wide: true, title: `Scoring-Methode ${o.what}`, head: ['Vergleichsdaten', '', o.a, '', o.b, ''], rows: [
+      { label: 'Kriterien', head: true, cells: ['Gewichtung in %', 'Punkte', 'Ergebnis', 'Punkte', 'Ergebnis'] },
+      ...crit.map((k, i) => ({ label: k, cells: [i === miss ? { k: 'g' } : `${w[i]} %`, String(pA[i]), { k: `a${i}` }, String(pB[i]), { k: `b${i}` }] })),
+      { label: 'Gesamt', total: true, cells: ['100 %', '', { k: 'sA' }, '', { k: 'sB' }] },
+      { label: 'Entscheidung für', cells: ['', { k: 'w', span: 4 }] }] };
+    const line = (name, P, S) => `**${name}**: ${crit.map((k, i) => `${dec(w[i] / 100)} · ${P[i]}`).join(' + ')} = **${dec(S)}**`;
+    return { kicker: 'Scoring-Methode', lead: `Für die Auswahl „${o.what}“ werden zwei Alternativen mit der Scoring-Methode verglichen: ${o.a} und ${o.b}. Gewichtung und Punkte (1 = sehr schlecht bis 5 = sehr gut) stehen schon in der Tabelle.${miss >= 0 ? ' Bei einem Kriterium fehlt die Gewichtung.' : ''}`,
+      ask: `${miss >= 0 ? 'Ergänze die fehlende Gewichtung, berechne' : 'Berechne'} die Ergebnisse und das Gesamtergebnis und entscheide dich.`, answer,
+      hints: ['Ergebnis = Gewichtung · Punkte, z. B. 25 % · 4 = 0,25 · 4 = 1. In Excel: =C5*B5.', 'Gesamt = Summe der Ergebnisse, in Excel =SUMME(D5:D10). Das höhere Gesamtergebnis gewinnt.', ...(miss >= 0 ? ['Alle Gewichtungen zusammen ergeben 100 %.'] : [])],
+      solution: [...(miss >= 0 ? [`Fehlende Gewichtung: 100 % − ${others} % = **${w[miss]} %**`] : []), line(o.a, pA, c.sA), line(o.b, pB, c.sB),
+        `Entscheidung für **${c.win}** (höheres Gesamtergebnis)${c.twist ? `, obwohl ${c.lose} ohne Gewichtung mehr Punkte hat (${c.win === o.a ? c.rawB : c.rawA} zu ${c.win === o.a ? c.rawA : c.rawB}). Entscheidend sind die hoch gewichteten Kriterien.` : '.'}`] };
+  });
   const INV_MC = [
     ['Was versteht man unter einer Investition?', 'Die Verwendung finanzieller Mittel zur Beschaffung von Vermögen', ['Die Aufnahme eines Kredits', 'Den laufenden Einkauf von Waren für den Verkauf', 'Die Zahlung der Gehälter']],
     ['Wo sieht man in der Bilanz die Investition?', 'Auf der Aktivseite als Vermögen (Mittelverwendung)', ['Auf der Passivseite als Kapital (Mittelherkunft)', 'In der Gewinn- und Verlustrechnung', 'Gar nicht']],
@@ -950,8 +1008,8 @@
     return { title: 'Versicherungen', lead: '', parts: list.map(t => part(t, t.answer.type === 'fields' ? 2 : 1)) };
   }
   function testTheorie(r) {
-    const list = [mk(r, 'i-gut', 2), mk(r, 'i-phase', 2), mk(r, 'i-krit', 2), mk(r, 'kv-tf'), mk(r, 'gv-tf'), mk(r, 'ra-deutung')];
-    return { title: 'Investitionsrechnung: Theorie', lead: '', parts: list.map(t => part(t, t.answer.type === 'tf' ? 2 : t.answer.type === 'fields' ? 2 : 1)) };
+    const list = [mk(r, 'i-gut', 2), mk(r, 'i-phase', 2), mk(r, 'i-krit', 2), mk(r, 'i-scoring', 2), mk(r, 'kv-tf'), mk(r, 'gv-tf'), mk(r, 'ra-deutung')];
+    return { title: 'Investitionsrechnung: Theorie', lead: '', parts: list.map(t => part(t, t.answer.grid ? 4 : t.answer.type === 'tf' ? 2 : t.answer.type === 'fields' ? 2 : 1)) };
   }
   // Extra topics (not in the SA): only when the learner switches off "Nur SA-Stoff".
   function testLeistung(r) { const a = mk(r, 'l-unter'), b = mk(r, 'l-sb'), c = mk(r, 'k-praemie'); return { title: 'Versicherungsleistung und Bonus-Malus', lead: '', parts: [part(a, 3), part(b, 2), part(c, 3)] }; }
@@ -968,5 +1026,5 @@
     rent: (g, z, kap) => (g + z) * 100 / kap, amort: (ak, rw, back) => (ak - rw) / back, crit: (f1, f2, v1, v2) => Math.abs(f2 - f1) / Math.abs(v1 - v2),
     entsch: (vs, vw, dmg) => vs < vw ? vs * dmg / vw : dmg, bm: (prem, from, to) => prem / BM[from] * BM[to],
   };
-  return { ...E_, buildTest, SA_TOPICS, BM, eur, r2, calc, critCase, costCase, profitCase, fullCase, fremdCase, bmCompare, underCase };
+  return { ...E_, buildTest, SA_TOPICS, BM, eur, r2, calc, critCase, costCase, profitCase, fullCase, fremdCase, scoreCase, bmCompare, underCase };
 });

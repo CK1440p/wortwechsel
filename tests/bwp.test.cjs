@@ -67,6 +67,9 @@ test('formulas reproduce the book and the class quiz', () => {
   assert.equal(c.afa(80000, 10000, 5) + c.zins(80000, 10000, 8) + 12000 + 20000, 49600); assert.equal(c.afa(100000, 10000, 5) + c.zins(100000, 10000, 8) + 15000 + 16000, 53400);
   assert.equal(c.afa(24000, 4000, 5) + c.zins(24000, 4000, 8) + 3000 + 8000, 16120); assert.equal(c.afa(30000, 5000, 5) + c.zins(30000, 5000, 8) + 3500 + 6000, 15900);
   assert.equal(c.amort(150000, 0, 30000), 5);
+  // Scoring-Methode E-Shuttlebus (Buch S. 71): Omnicar 2,6, MAN 3,15.
+  const score = (w, p) => B.r2(w.reduce((s, x, i) => s + x / 100 * p[i], 0)), wBus = [25, 10, 20, 20, 10, 15];
+  assert.equal(score(wBus, [4, 4, 2, 2, 1, 2]), 2.6); assert.equal(score(wBus, [1, 2, 5, 4, 3, 4]), 3.15);
   // Farblaserdrucker (Rentabilität gegen externen Kopierer 0,83 € × 5.000): Gesamtkosten 3.491 / 3.776,50, Rentabilität 89,49 % / 70,53 %.
   const tOki = c.afa(1360, 200, 5) + c.zins(1360, 200, 5) + 320 + 0.58 * 5000, tXer = c.afa(1040, 100, 5) + c.zins(1040, 100, 5) + 410 + 0.63 * 5000;
   assert.equal(B.r2(tOki), 3491); assert.equal(B.r2(tXer), 3776.5);
@@ -92,6 +95,9 @@ test('generated cases follow the same formulas', () => {
       for (const X of [x.A, x.B]) { assert.ok(X.g > 0); assert.ok(Math.abs(X.g - (x.p * x.q - X.afa - X.zins - X.fix - X.v * x.q)) < 0.011); assert.ok(Math.abs(X.rent - B.calc.rent(X.g, X.zins, X.kap)) < 1e-9); assert.equal(X.zins, B.calc.zins(X.ak, X.rw, X.i)); assert.equal(X.afa, B.calc.afa(X.ak, X.rw, X.nd)); }
       assert.equal(x.win, x.A.rent > x.B.rent ? x.o.a : x.o.b);
     }
+    const sc = B.scoreCase(M.kit.makeRng(seed), seed % 2 ? 2 : 3);
+    assert.equal(sc.w.reduce((s, x) => s + x, 0), 100); assert.ok(sc.w.every(x => x >= 5 && x <= 35 && x % 5 === 0));
+    assert.ok(Math.abs(sc.sA - sc.w.reduce((s, x, i) => s + x / 100 * sc.pA[i], 0)) < 1e-9); assert.equal(sc.win, sc.sA > sc.sB ? sc.o.a : sc.o.b);
     const f = B.fullCase(M.kit.makeRng(seed));
     for (const X of [f.A, f.B]) { assert.ok(Math.abs(X.rent - B.calc.rent(X.g, X.zins, X.kap)) < 1e-9); assert.ok(Math.abs(X.am - B.calc.amort(X.ak, X.rw, X.g + X.afa)) < 1e-9); assert.ok(Math.abs(X.zins - B.calc.zins(X.ak, X.rw, X.i)) < 1e-9); }
   }
