@@ -186,3 +186,15 @@ test('risk policy: the four measures are taught and checked', () => {
   const insurance = [...Array(300).keys()].map(s => B.makeTask('r-massnahme', 1, s + 1)).find(t => /Feuerversicherung/.test(t.lead));
   assert.ok(insurance); assert.equal(insurance.answer.options[insurance.answer.correct].text, 'Risiko überwälzen');
 });
+test('calculator docks on the right and can be detached again', () => {
+  const store = new Map(), a = app(store);
+  a.window.innerWidth = 1400;
+  a.click('[data-subject="BWP"]'); a.click('#calc-toggle');
+  const panel = a.$('#calc');
+  assert.equal(panel.hidden, false); assert.ok(panel.classList.contains('docked')); assert.ok(a.document.body.classList.contains('calc-docked'));
+  a.click('#calc [data-c="dock"]');
+  assert.equal(panel.classList.contains('docked'), false); assert.equal(a.document.body.classList.contains('calc-docked'), false);
+  assert.equal(JSON.parse(store.get('wortwechsel.calc')).dock, false);
+  a.click('#calc [data-c="dock"]'); assert.ok(panel.classList.contains('docked'));
+  a.click('#calc [data-c="close"]'); assert.equal(a.document.body.classList.contains('calc-docked'), false, 'closing gives the room back');
+});
