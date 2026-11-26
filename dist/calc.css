@@ -1,7 +1,7 @@
 /* Taschenrechner (calc.js): nur im Fach Rechnungswesen sichtbar. */
 :root{--calc-bg:var(--surface,#fff);--calc-key:#f2f4fb;--calc-key-hover:#e6eafa;--calc-fn:#e9ecf7;--calc-op:color-mix(in srgb,var(--tr-accent,#d6336c) 12%,#fff);--calc-screen:#f7f8fc;--calc-shadow:0 24px 60px -18px #1b244a55,0 2px 8px #1b244a14}
 :root[data-theme="dark"]{--calc-bg:#1a1a1a;--calc-key:#262626;--calc-key-hover:#313131;--calc-fn:#2d2d2d;--calc-op:color-mix(in srgb,var(--tr-accent,#ff7aa8) 18%,#262626);--calc-screen:#131313;--calc-shadow:0 28px 70px -16px #000c,0 0 0 1px #ffffff0d}
-body:not(.subject-rw) .calc-toggle,body:not(.subject-rw) .calc,body:not(.subject-rw) .calc-fab{display:none!important}
+body:not(.calc-on) .calc-toggle,body:not(.calc-on) .calc,body:not(.calc-on) .calc-fab{display:none!important}
 .calc-fab{display:none}
 .calc-toggle.on{background:var(--blue-light);color:var(--blue)}
 
@@ -68,4 +68,4 @@ body:not(.subject-rw) .calc-toggle,body:not(.subject-rw) .calc,body:not(.subject
   body.keyboard-open .calc{bottom:calc(10px + env(safe-area-inset-bottom))}
 }
 /* Phones: room under the page so the last button can scroll above the round calculator button */
-@media(max-width:540px){body.subject-rw .main-shell{padding-bottom:calc(140px + env(safe-area-inset-bottom))}}
+@media(max-width:540px){body.calc-on .main-shell{padding-bottom:calc(140px + env(safe-area-inset-bottom))}}

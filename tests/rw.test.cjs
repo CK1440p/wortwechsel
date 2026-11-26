@@ -399,12 +399,14 @@ test('calculator: book number formats, percent like a pocket calculator, errors'
   assert.throws(() => ev('2 ^ 3'), /kann ich nicht rechnen/);
   assert.equal(CALC.format(9991), '9.991'); assert.equal(CALC.format(635.625), '635,625'); assert.equal(CALC.formatMoney(635.625), '635,63'); assert.equal(CALC.formatMoney(10170), '10.170,00');
 });
-test('calculator UI: only in Rechnungswesen, keys, equals, tape and taking the result into a field', () => {
+test('calculator UI: in Rechnungswesen and BWP, keys, equals, tape and taking the result into a field', () => {
   const a = app();
   a.click('[data-subject="Mathe"]');
-  assert.equal(a.document.body.classList.contains('subject-rw'), false);
+  assert.equal(a.document.body.classList.contains('calc-on'), false);
+  a.click('[data-subject="BWP"]');
+  assert.equal(a.document.body.classList.contains('calc-on'), true);
   a.click('[data-subject="Rechnungswesen"]');
-  assert.equal(a.document.body.classList.contains('subject-rw'), true);
+  assert.equal(a.document.body.classList.contains('subject-rw'), true); assert.equal(a.document.body.classList.contains('calc-on'), true);
   const panel = a.$('#calc'); assert.ok(a.$('.topbar-right #calc-toggle')); assert.equal(panel.hidden, true);
   a.click('#calc-toggle'); assert.equal(panel.hidden, false); assert.equal(a.$('#calc-toggle').getAttribute('aria-pressed'), 'true');
   const press = v => a.click([...panel.querySelectorAll('.calc-keys button')].find(b => b.dataset.v === v));

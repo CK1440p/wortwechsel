@@ -534,6 +534,8 @@
     if ($('#nav-math').hidden !== !math) $('#nav-math').hidden = !math;
     if ($('#nav-rw').hidden !== !rw) $('#nav-rw').hidden = !rw;
     document.body.classList.toggle('subject-rw', rw);
+    // The calculator is shown in the subjects with money calculations.
+    document.body.classList.toggle('calc-on', rw || bwp);
     if ($('#nav-bwp').hidden !== !bwp) $('#nav-bwp').hidden = !bwp;
     if ($('#nav-qa').hidden !== (vocab || math || rw || bwp)) $('#nav-qa').hidden = vocab || math || rw || bwp;
     $('#nav-vocab-catalogs').hidden = !subjectCatalogs(VOCAB).length;

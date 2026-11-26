@@ -1,4 +1,4 @@
-// Taschenrechner für Rechnungswesen: Knopf in der Kopfleiste (oder Alt/⌥ + R), schwebendes Fenster,
+// Taschenrechner für Rechnungswesen und BWP: Knopf in der Kopfleiste (oder Alt/⌥ + R), schwebendes Fenster,
 // Ergebnis mit „In Feld übernehmen“ direkt ins zuletzt benutzte Betragsfeld.
 (() => {
   // ---- Rechnen ----
@@ -111,7 +111,7 @@
   const coarse = window.matchMedia?.('(pointer: coarse)').matches;
   if (coarse) input.setAttribute('inputmode', 'none');
 
-  const isRw = () => document.body.classList.contains('subject-rw');
+  const isRw = () => document.body.classList.contains('calc-on');
   const isField = el => el && el.tagName === 'INPUT' && el.getAttribute('inputmode') === 'decimal' && !panel.contains(el);
   const result = () => { try { return evaluate(input.value); } catch { return null; } };
   function preview() {

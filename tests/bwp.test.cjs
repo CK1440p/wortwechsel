@@ -174,6 +174,8 @@ test('SA focus: only school-test topics in mixing, progress and test, switchable
   a.click('[data-action="m-focus"]'); assert.equal(store.get('wortwechsel.focus.bwp'), '1');
   // A mixed round in SA mode never shows an extra topic.
   a.click('[data-action="m-mix"]'); assert.ok(a.$('#m-card')); assert.doesNotMatch(a.$('.round-progress').textContent, /Vertrag und Schadensfall|Versicherungsleistung|Kfz und Bonus-Malus/);
+  // The calculator is available in BWP and can take its result into a worksheet field.
+  assert.equal(a.document.body.classList.contains('calc-on'), true); assert.ok(a.$('#calc-toggle'));
   // Other courses have no switch.
   a.click('[data-subject="Mathe"]'); assert.equal(a.$('[data-action="m-focus"]'), null);
 });
