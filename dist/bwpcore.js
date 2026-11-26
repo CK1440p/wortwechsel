@@ -103,6 +103,74 @@
     return { kicker: 'Wissen', ask: 'Richtig oder falsch?', answer: tf(items), hints: ['Denk an Risikogemeinschaft, Pflicht und Freiwilligkeit.'], solution: items.map(([t, v, w]) => `${v ? 'Richtig' : 'Falsch'}: ${t} ${w}`) };
   });
 
+  // ================= Risikopolitische Maßnahmen =================
+  const RISK = ['Risiko vermeiden', 'Risiko vermindern', 'Risiko überwälzen', 'Risiko selbst tragen'];
+  const RISK_CASES = [
+    ['Ein Weinhändler liefert nicht mehr in ein Land mit Bürgerkrieg, obwohl die Nachfrage groß ist.', 'Risiko vermeiden', 'Auf das riskante Geschäft wird ganz verzichtet.'],
+    ['Eine Tischlerei lehnt einen Großauftrag eines unbekannten Kunden ab, der keine Anzahlung leisten will.', 'Risiko vermeiden', 'Das Geschäft und damit das Risiko wird gar nicht eingegangen.'],
+    ['Ein Start-up verzichtet darauf, mit geliehenem Geld an der Börse zu spekulieren.', 'Risiko vermeiden', 'Die riskante Tätigkeit findet gar nicht statt.'],
+    ['Ein Hotel baut eine Sprinkleranlage und Rauchmelder in allen Zimmern ein.', 'Risiko vermindern', 'Ein Brand kann noch passieren, der Schaden wird aber kleiner.'],
+    ['Ein Juwelier lässt eine Alarmanlage und ein Sicherheitsglas einbauen.', 'Risiko vermindern', 'Die Wahrscheinlichkeit eines Einbruchs sinkt.'],
+    ['Ein Produktionsbetrieb lässt seine Maschinen regelmäßig warten und schult die Mitarbeiter in Arbeitssicherheit.', 'Risiko vermindern', 'Ausfälle und Unfälle werden seltener.'],
+    ['Ein Onlineshop sichert seine Daten jeden Tag zusätzlich in einer Cloud.', 'Risiko vermindern', 'Ein Datenverlust richtet weniger Schaden an.'],
+    ['Ein Großhändler prüft vor jeder Lieferung auf Rechnung die Zahlungsfähigkeit (Bonität) des Kunden.', 'Risiko vermindern', 'Zahlungsausfälle werden seltener.'],
+    ['Eine Bäckerei bezieht ihr Mehl von drei verschiedenen Mühlen statt von einer.', 'Risiko vermindern', 'Fällt ein Lieferant aus, gibt es trotzdem Mehl (Risikostreuung).'],
+    ['Ein Betrieb schließt eine Feuerversicherung für seine Lagerhalle ab.', 'Risiko überwälzen', 'Den finanziellen Schaden trägt im Brandfall die Versicherung.'],
+    ['Ein Exporteur schließt eine Kreditversicherung gegen den Zahlungsausfall seiner Kunden ab.', 'Risiko überwälzen', 'Das Ausfallsrisiko trägt die Versicherung.'],
+    ['Ein Unternehmen least seine Computer, statt sie zu kaufen. Veralten sie, tauscht der Leasinggeber sie aus.', 'Risiko überwälzen', 'Das Risiko der Veralterung liegt beim Vertragspartner.'],
+    ['Ein Händler verkauft „ab Werk“: Ab der Übergabe trägt der Käufer das Risiko für den Transport.', 'Risiko überwälzen', 'Das Transportrisiko wird vertraglich auf den Käufer übertragen.'],
+    ['Eine Spedition versichert ihre Ladungen mit einer Transportversicherung.', 'Risiko überwälzen', 'Den Schaden bei Verlust trägt die Versicherung.'],
+    ['Ein Betrieb versichert seine Kugelschreiber und Büroklammern bewusst nicht.', 'Risiko selbst tragen', 'Der mögliche Schaden ist so klein, dass sich eine Prämie nicht lohnt.'],
+    ['Ein Unternehmen vereinbart in der Kaskoversicherung einen Selbstbehalt von € 1.000,–, um Prämie zu sparen.', 'Risiko selbst tragen', 'Kleine Schäden bis zum Selbstbehalt trägt der Betrieb selbst.'],
+    ['Ein Modegeschäft weiß, dass die neue Kollektion vielleicht nicht gefällt. Dieses Absatzrisiko lässt sich nicht versichern.', 'Risiko selbst tragen', 'Das allgemeine Unternehmerrisiko muss der Betrieb selbst tragen.'],
+    ['Ein Betrieb bildet aus seinen Gewinnen Rücklagen, um mögliche Verluste später selbst abdecken zu können.', 'Risiko selbst tragen', 'Das Risiko bleibt im Betrieb, es wird nur finanziell vorgesorgt.'],
+  ];
+  gen('r-massnahme', 'risiko', 'Welche Maßnahme ist das?', 1, 3, 1, (r, st) => {
+    if (st < 3) { const [text, right, why] = r.pick(RISK_CASES); return { kicker: 'Risikopolitik', lead: text, ask: 'Welche risikopolitische Maßnahme setzt der Betrieb hier?', answer: mc(r, right, RISK.filter(x => x !== right)), hints: ['Vermeiden: gar nicht erst machen. Vermindern: Schaden oder Wahrscheinlichkeit senken. Überwälzen: jemand anderer trägt den Schaden. Selbst tragen: der Betrieb zahlt selbst.'], solution: [`**${right}**. ${why}`] }; }
+    const list = []; for (const k of r.shuffle(RISK)) list.push(r.pick(RISK_CASES.filter(c => c[1] === k)));
+    const pick = r.sample(list, 3);
+    return { kicker: 'Risikopolitik', ask: 'Ordne jedem Fall die risikopolitische Maßnahme zu.', answer: fields(pick.map(([text, right], i) => selSame(`m${i}`, text, RISK, right))), hints: ['Frag dich: Findet das Geschäft statt? Wird etwas getan, damit weniger passiert? Wer zahlt am Ende den Schaden?'], solution: pick.map(([text, right, why]) => `${text} → **${right}**. ${why}`) };
+  });
+  const RISK_MC = [
+    ['Was versteht man unter einem Risiko?', 'Die Gefahr, dass ein Ereignis eintritt, das zu einem Schaden oder Verlust führt', ['Einen sicheren Verlust', 'Die Prämie einer Versicherung', 'Den Gewinn eines Unternehmens']],
+    ['Welche Maßnahme ist eine Risikoüberwälzung?', 'Der Abschluss einer Versicherung', ['Der Einbau einer Alarmanlage', 'Der Verzicht auf ein Geschäft', 'Die Bildung von Rücklagen']],
+    ['Welches Risiko muss ein Unternehmen immer selbst tragen?', 'Das allgemeine Unternehmerrisiko, z. B. dass die Produkte nicht gekauft werden', ['Das Brandrisiko', 'Das Risiko eines Einbruchs', 'Das Transportrisiko']],
+    ['Warum vermeidet ein Unternehmen nicht einfach jedes Risiko?', 'Ohne Risiko gibt es keine Chance auf Gewinn, man müsste auf viele Geschäfte verzichten', ['Weil das gesetzlich verboten ist', 'Weil Versicherungen das verlangen', 'Weil Risiken immer versicherbar sind']],
+    ['Wie kann man ein Risiko außer durch eine Versicherung noch überwälzen?', 'Vertraglich auf einen Vertragspartner, z. B. durch Leasing oder Lieferbedingungen', ['Durch eine Alarmanlage', 'Durch Rücklagen', 'Durch einen Selbstbehalt']],
+    ['Was ist Risikostreuung?', 'Das Risiko wird auf mehrere Lieferanten, Kunden oder Märkte verteilt, damit ein Ausfall weniger schadet', ['Das Risiko wird auf eine Versicherung übertragen', 'Auf das Geschäft wird verzichtet', 'Der Schaden wird mit Rücklagen bezahlt']],
+    ['Wann ist es sinnvoll, ein Risiko selbst zu tragen?', 'Wenn der mögliche Schaden klein ist und die Prämie im Verhältnis zu teuer wäre', ['Wenn der Schaden existenzbedrohend sein kann', 'Bei jedem Brandrisiko', 'Wenn eine Versicherung gesetzlich vorgeschrieben ist']],
+    ['Was bedeutet Risiko vermindern?', 'Die Wahrscheinlichkeit oder die Höhe eines Schadens wird durch Maßnahmen gesenkt', ['Das Geschäft wird nicht gemacht', 'Ein anderer trägt den Schaden', 'Man zahlt den Schaden selbst']],
+  ];
+  gen('r-wissen', 'risiko', 'Grundbegriffe', 1, 3, 2, (r) => {
+    const [q, right, wrong] = r.pick(RISK_MC);
+    return { kicker: 'Risikopolitik', ask: q, answer: mc(r, right, wrong), hints: ['Vier Maßnahmen: vermeiden, vermindern, überwälzen, selbst tragen.'], solution: [`**${right}**.`] };
+  });
+  const MATRIX = [
+    ['Der Schaden wäre sehr hoch und tritt auch häufig ein.', 'Risiko vermeiden', 'Ein so gefährliches Geschäft lässt man besser bleiben.'],
+    ['Der Schaden wäre sehr hoch, tritt aber nur selten ein (z. B. ein Großbrand).', 'Risiko überwälzen', 'Genau dafür gibt es Versicherungen: seltene, aber existenzbedrohende Schäden.'],
+    ['Der Schaden ist klein, tritt aber häufig ein (z. B. kleine Fehler in der Produktion).', 'Risiko vermindern', 'Mit Kontrollen, Wartung und Schulungen wird er seltener.'],
+    ['Der Schaden ist klein und tritt selten ein.', 'Risiko selbst tragen', 'Eine Versicherung würde mehr kosten, als sie bringt.'],
+  ];
+  gen('r-matrix', 'risiko', 'Welche Maßnahme passt?', 2, 3, 3, (r, st) => {
+    if (st === 2) { const [text, right, why] = r.pick(MATRIX); return { kicker: 'Risikopolitik', lead: text, ask: 'Welche risikopolitische Maßnahme ist hier am sinnvollsten?', answer: mc(r, right, RISK.filter(x => x !== right)), hints: ['Denk an zwei Fragen: Wie hoch wäre der Schaden? Wie oft passiert er?'], solution: [`**${right}**. ${why}`] }; }
+    const list = r.shuffle(MATRIX);
+    return { kicker: 'Risikopolitik', ask: 'Welche Maßnahme ist jeweils am sinnvollsten?', answer: fields(list.map(([text, right], i) => selSame(`x${i}`, text, RISK, right))), hints: ['Hoch und häufig: vermeiden. Hoch und selten: überwälzen. Klein und häufig: vermindern. Klein und selten: selbst tragen.'], solution: list.map(([text, right, why]) => `${text} → **${right}**. ${why}`) };
+  });
+  const RISK_TF = [
+    ['Mit einer Versicherung wird das Risiko vermieden.', false, 'Der Schaden kann trotzdem eintreten. Die Versicherung trägt nur die finanziellen Folgen: Das Risiko wird überwälzt.'],
+    ['Eine Alarmanlage ist eine Maßnahme zur Risikoverminderung.', true, 'Sie senkt die Wahrscheinlichkeit eines Einbruchs.'],
+    ['Ein Selbstbehalt bedeutet, dass ein Teil des Risikos selbst getragen wird.', true, 'Kleine Schäden zahlt man selbst.'],
+    ['Jedes unternehmerische Risiko lässt sich versichern.', false, 'Das allgemeine Unternehmerrisiko (z. B. Absatzrisiko) muss man selbst tragen.'],
+    ['Wer auf ein Geschäft verzichtet, vermeidet das Risiko, verzichtet aber auch auf den möglichen Gewinn.', true, 'Risiko und Chance gehören zusammen.'],
+    ['Lieferanten auf mehrere Firmen aufzuteilen, ist eine Form der Risikoverminderung.', true, 'Das nennt man Risikostreuung.'],
+    ['Durch Leasing kann ein Risiko auf einen Vertragspartner überwälzt werden.', true, 'Z. B. das Risiko, dass Geräte veralten.'],
+    ['Rücklagen zu bilden ist eine Risikoüberwälzung.', false, 'Mit Rücklagen trägt der Betrieb das Risiko selbst, er sorgt nur finanziell vor.'],
+  ];
+  gen('r-tf', 'risiko', 'Richtig oder falsch?', 1, 3, 4, (r, st) => {
+    const items = r.sample(RISK_TF, st === 1 ? 2 : st === 2 ? 3 : 4);
+    return { kicker: 'Risikopolitik', ask: 'Richtig oder falsch?', answer: tf(items), hints: ['Versichern heißt überwälzen, nicht vermeiden.'], solution: items.map(([t, v, w]) => `${v ? 'Richtig' : 'Falsch'}: ${t} ${w}`) };
+  });
+
   // ================= Gesetzliche Sozialversicherung =================
   const SV = ['Krankenversicherung', 'Unfallversicherung', 'Pensionsversicherung', 'Arbeitslosenversicherung'];
   const SV_CASES = [
@@ -806,7 +874,9 @@
   });
 
   // ================= Test simulation =================
-  const TOPIC_IDS = ['prinzip', 'sv', 'privat', 'vertrag', 'leistung', 'kfz', 'invest', 'kosten', 'gewinn', 'renta'];
+  const TOPIC_IDS = ['prinzip', 'risiko', 'sv', 'privat', 'invest', 'kosten', 'gewinn', 'renta', 'vertrag', 'leistung', 'kfz'];
+  // Stoff der Schularbeit laut Lehrer: Versicherungen (risikopolitische Maßnahmen, gesetzliche/private Versicherung) und Investitionsrechnung.
+  const SA_TOPICS = ['prinzip', 'risiko', 'sv', 'privat', 'invest', 'kosten', 'gewinn', 'renta'];
   const E_ = M.engine(GENS, TOPIC_IDS);
   const mk = (r, id, st = 3) => E_.makeTask(id, st, r.int(1, 1e9));
   const part = (t, points, ask) => ({ points, ask: ask || `${t.lead ? `${t.lead} ` : ''}${t.ask}`, answer: t.answer, solution: t.solution, table: t.table });
@@ -819,18 +889,20 @@
     const t = mk(r, 'ra-voll');
     return { title: 'Fallstudie Investitionsrechnung', lead: t.lead, parts: [{ points: 9, ask: t.ask, answer: t.answer, solution: t.solution }] };
   }
-  function testKrit(r) { const t = mk(r, 'kv-krit'); return { title: 'Kritische Menge', lead: '', parts: [part(t, 4)] }; }
-  function testVersicherung(r) {
-    const a = mk(r, 'l-unter'), b = mk(r, 'l-sb'), c = mk(r, 'l-art', 2);
-    return { title: 'Versicherungsleistung', lead: '', parts: [part(a, 3), part(b, 2), part(c, 1)] };
+  function testRenta(r) { const a = mk(r, 'ra-renta'), b = mk(r, 'ra-amort'), c = mk(r, 'ra-ersparnis', 2); return { title: 'Rentabilität und Amortisation', lead: '', parts: [part(a, 3), part(b, 3), part(c, 2)] }; }
+  function testVersicherungen(r) {
+    const list = [mk(r, 'r-massnahme'), mk(r, 'sv-fall'), mk(r, 'pr-welche', 2), mk(r, 'pr-art', 2), mk(r, 'sv-wissen'), mk(r, 'r-wissen')];
+    return { title: 'Versicherungen', lead: '', parts: list.map(t => part(t, t.answer.type === 'fields' ? 2 : 1)) };
   }
-  function testKfz(r) { const a = mk(r, 'k-praemie'), b = mk(r, 'k-art'), c = mk(r, 'k-tf'); return { title: 'Kfz-Versicherung', lead: '', parts: [part(a, 3), part(b, 1), part(c, 2)] }; }
-  function testWissen(r) {
-    const list = [mk(r, 'sv-fall'), mk(r, 'pr-welche', 2), mk(r, 'v-ablauf'), mk(r, 'i-anlass'), mk(r, 'ra-deutung')];
-    return { title: 'Wissensfragen', lead: '', parts: list.map(t => part(t, t.answer.type === 'fields' ? 2 : 1)) };
+  function testTheorie(r) {
+    const list = [mk(r, 'i-gut', 2), mk(r, 'i-phase', 2), mk(r, 'i-krit', 2), mk(r, 'kv-tf'), mk(r, 'gv-tf'), mk(r, 'ra-deutung')];
+    return { title: 'Investitionsrechnung: Theorie', lead: '', parts: list.map(t => part(t, t.answer.type === 'tf' ? 2 : t.answer.type === 'fields' ? 2 : 1)) };
   }
-  function buildTest(seed, size = 'full') {
-    const r = makeRng(seed), list = size === 'short' ? [testKosten, testVersicherung, testWissen] : size === 'inv' ? [testKosten, testKrit, testGewinnRenta] : [testKosten, testGewinnRenta, testVersicherung, testKfz, testWissen];
+  // Extra topics (not in the SA): only when the learner switches off "Nur SA-Stoff".
+  function testLeistung(r) { const a = mk(r, 'l-unter'), b = mk(r, 'l-sb'), c = mk(r, 'k-praemie'); return { title: 'Versicherungsleistung und Bonus-Malus', lead: '', parts: [part(a, 3), part(b, 2), part(c, 3)] }; }
+  function buildTest(seed, size = 'full', o = {}) {
+    const sa = o.focus !== false, r = makeRng(seed);
+    const list = size === 'short' ? [testKosten, testVersicherungen] : size === 'inv' ? [testKosten, testGewinnRenta, testRenta] : [testKosten, testGewinnRenta, testVersicherungen, testTheorie, ...(sa ? [] : [testLeistung])];
     const tasks = list.map((make, n) => { const t = make(makeRng(r.int(1, 2 ** 31))); return { plots: [], ...t, parts: t.parts.map((p, i) => ({ ...p, id: `${n}-${i}`, label: String.fromCharCode(97 + i) })) }; });
     return { seed, size, tasks, points: tasks.flatMap(t => t.parts).reduce((s, p) => s + p.points, 0) };
   }
@@ -841,5 +913,5 @@
     rent: (g, z, kap) => (g + z) * 100 / kap, amort: (ak, rw, back) => (ak - rw) / back, crit: (f1, f2, v1, v2) => Math.abs(f2 - f1) / Math.abs(v1 - v2),
     entsch: (vs, vw, dmg) => vs < vw ? vs * dmg / vw : dmg, bm: (prem, from, to) => prem / BM[from] * BM[to],
   };
-  return { ...E_, buildTest, BM, eur, r2, calc, critCase, costCase, profitCase, fullCase, bmCompare, underCase };
+  return { ...E_, buildTest, SA_TOPICS, BM, eur, r2, calc, critCase, costCase, profitCase, fullCase, bmCompare, underCase };
 });

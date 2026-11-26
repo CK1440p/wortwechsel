@@ -161,6 +161,11 @@
     function leave() { round = null; exam = null; live = null; stopLab(); stopTimer(); }
     const levelChip = id => { const t = progress().topics[id], l = M.levelOf(t); return `<span class="qa-level l${l}"><i></i>${LEVELS[l]}</span>`; };
     const score = id => progress().topics[id]?.score || 0;
+    // Optional focus (e.g. "Nur SA-Stoff"): mixed rounds, progress and test use only these topics. Kept per device.
+    const FOCUS_KEY = `wortwechsel.focus.${K}`;
+    let focusOn = !!course.focus;
+    try { if (course.focus && localStorage.getItem(FOCUS_KEY) === '0') focusOn = false; } catch {}
+    const activeIds = () => focusOn ? course.focus.topics : E.TOPIC_IDS;
 
     function heroArt() {
       const f = x => 0.55 * Math.sin(x * 1.25) * 34 + 62 - x * 5, d = x => 0.55 * 1.25 * Math.cos(x * 1.25) * 34 - 5, X = x => 8 + x * 38;
@@ -177,13 +182,14 @@
     const topicGroups = () => { const out = []; for (const t of TOPICS) { const last = out.at(-1); if (last && last[0] === (t.group || '')) last[1].push(t); else out.push([t.group || '', [t]]); } return out; };
     function home() {
       leave(); shell(K, 'Übersicht');
-      const p = progress(), s = E.stats(p), own = ctx.catalogs();
-      const order = [...TOPICS].sort((a, b) => score(a.id) - score(b.id)), weakest = order[0], started = s.solved > 0 || Object.keys(p.topics).length > 0;
+      const p = progress(), s = E.stats(p, activeIds()), own = ctx.catalogs();
+      const order = TOPICS.filter(t => activeIds().includes(t.id)).sort((a, b) => score(a.id) - score(b.id)), weakest = order[0], started = s.solved > 0 || Object.keys(p.topics).length > 0;
       $('#main').innerHTML = `<section class="page-intro"><div><h1>${esc(course.subject)}<span class="blue-dot">.</span></h1><p>${esc(course.line)}</p></div><button class="button primary" data-action="m-formulas">${icon('book')}${esc(course.sheetTitle || 'Formeln')}</button></section>
-        <section class="dashboard-grid"><div class="focus-card m-focus${course.focusClass ? ` ${course.focusClass}` : ''}"><div class="focus-copy"><div class="hero-tag"><span class="pulse-dot"></span>${started ? 'EMPFOHLEN' : 'LOS GEHT’S'}</div><h2>Gemischt üben</h2><p>8 Aufgaben aus allen Themen, ${started ? `mehr von „${esc(weakest.title)}“` : 'die Schwächen zuerst'}. Fühlt sich schwerer an, bleibt aber länger.</p><div class="hero-actions"><button class="button white" data-action="m-mix">${icon('spark')}Üben${icon('arrow')}</button><button class="button glass" data-action="m-test">${icon('clock')}Test simulieren</button></div></div>${heroArt()}</div>
+        ${course.focus ? `<button type="button" class="m-focus-switch" data-action="m-focus" role="switch" aria-checked="${focusOn}"><span class="m-switch" aria-hidden="true"><i></i></span><span><strong>${esc(course.focus.label)}</strong><small>${esc(focusOn ? course.focus.note : 'Aus: Es wird aus allen Themen geübt, auch aus den Extras.')}</small></span></button>` : ''}
+        <section class="dashboard-grid"><div class="focus-card m-focus${course.focusClass ? ` ${course.focusClass}` : ''}"><div class="focus-copy"><div class="hero-tag"><span class="pulse-dot"></span>${started ? 'EMPFOHLEN' : 'LOS GEHT’S'}</div><h2>Gemischt üben</h2><p>8 Aufgaben aus ${focusOn ? 'dem SA-Stoff' : 'allen Themen'}, ${started ? `mehr von „${esc(weakest.title)}“` : 'die Schwächen zuerst'}. Fühlt sich schwerer an, bleibt aber länger.</p><div class="hero-actions"><button class="button white" data-action="m-mix">${icon('spark')}Üben${icon('arrow')}</button><button class="button glass" data-action="m-test">${icon('clock')}Test simulieren</button></div></div>${heroArt()}</div>
         <aside class="progress-card qa-progress-card"><div class="section-kicker">DEIN STAND ${icon('chart')}</div><div class="qa-progress-body">${ring(s.progress, 'gelernt')}${levelLegend(s)}</div><div class="stat-duo"><div><span class="stat-icon flame">${icon('flame')}</span><strong>${streak()} <small>${streak() === 1 ? 'Tag' : 'Tage'}</small></strong><p>in Folge gelernt</p></div><div><span class="stat-icon lavender">${icon('clock')}</span><strong>${p.test.at ? `${p.test.last}<small>%</small>` : '–'}</strong><p>${p.test.at ? 'letzter Test' : 'noch kein Test'}</p></div></div></aside></section>
         ${course.homeExtra ? course.homeExtra() : ''}
-        ${topicGroups().map(([group, list], gi) => `<section class="library-section${gi ? ' m-group' : ''}"><div class="section-heading"><div><h2>${esc(group || 'Themen')} <span class="count-badge">${list.length}</span></h2></div></div><div class="set-grid m-topic-grid">${list.map(t => { const i = TOPICS.indexOf(t), sc = score(t.id); return `<article class="set-card" style="--i:${i}"><div class="set-card-top"><div class="set-emoji tone-${i % 3}">${fig(t.id)}</div>${levelChip(t.id)}</div><button class="set-title" data-action="m-topic" data-topic="${t.id}">${esc(t.title)}</button><div class="set-meta">${esc(t.sub)}</div><div class="set-progress-label"><span>Fortschritt</span><strong>${sc}%</strong></div><div class="mini-progress"><span style="width:${sc}%"></span></div><div class="set-card-footer"><button class="text-button" data-action="m-topic" data-topic="${t.id}">Verstehen und üben</button><button class="round-button" data-action="m-start" data-topic="${t.id}" aria-label="${esc(t.title)} üben">${icon('arrow')}</button></div></article>`; }).join('')}</div></section>`).join('')}
+        ${topicGroups().map(([group, list], gi) => `<section class="library-section${gi ? ' m-group' : ''}${focusOn && list.every(t => !activeIds().includes(t.id)) ? ' m-off' : ''}"><div class="section-heading"><div><h2>${esc(group || 'Themen')} <span class="count-badge">${list.length}</span></h2></div></div><div class="set-grid m-topic-grid">${list.map(t => { const i = TOPICS.indexOf(t), sc = score(t.id); return `<article class="set-card" style="--i:${i}"><div class="set-card-top"><div class="set-emoji tone-${i % 3}">${fig(t.id)}</div>${levelChip(t.id)}</div><button class="set-title" data-action="m-topic" data-topic="${t.id}">${esc(t.title)}</button><div class="set-meta">${esc(t.sub)}</div><div class="set-progress-label"><span>Fortschritt</span><strong>${sc}%</strong></div><div class="mini-progress"><span style="width:${sc}%"></span></div><div class="set-card-footer"><button class="text-button" data-action="m-topic" data-topic="${t.id}">Verstehen und üben</button><button class="round-button" data-action="m-start" data-topic="${t.id}" aria-label="${esc(t.title)} üben">${icon('arrow')}</button></div></article>`; }).join('')}</div></section>`).join('')}
         ${own.length ? `<section class="library-section"><div class="section-heading"><div><h2>Eigene Fragenkataloge <span class="count-badge">${own.length}</span></h2></div></div><div class="set-grid">${own.map(c => `<article class="set-card"><div class="set-card-top"><div class="set-emoji tone-0">${esc(c.emoji)}</div></div><button class="set-title" data-action="qa-open" data-catalog="${esc(c.id)}">${esc(c.title)}</button><div class="set-card-footer"><button class="text-button" data-action="qa-open" data-catalog="${esc(c.id)}">Fragen ansehen</button></div></article>`).join('')}</div></section>` : ''}`;
     }
     function topicPage(id) {
@@ -409,7 +415,7 @@
     // ---- Practice round ----
     function startRound(o) {
       leave();
-      const list = o.gen ? Array.from({ length: 5 }, () => ({ topic: E.genById(o.gen).topic, gen: o.gen })) : o.topic ? Array.from({ length: 8 }, () => ({ topic: o.topic })) : E.planMix(progress(), 8).map(topic => ({ topic }));
+      const list = o.gen ? Array.from({ length: 5 }, () => ({ topic: E.genById(o.gen).topic, gen: o.gen })) : o.topic ? Array.from({ length: 8 }, () => ({ topic: o.topic })) : E.planMix(progress(), 8, Math.random, Date.now(), activeIds()).map(topic => ({ topic }));
       round = { plan: list, i: 0, used: [], results: [], right: 0, helped: 0, wrong: 0, extra: 0, title: o.gen ? E.genById(o.gen).label : o.topic ? topicById(o.topic).title : 'Gemischt üben', topic: o.topic || (o.gen ? E.genById(o.gen).topic : null), opts: o, start: Object.fromEntries(E.TOPIC_IDS.map(id => [id, score(id)])) };
       nextTask();
     }
@@ -512,7 +518,7 @@
     const partHtml = p => `<section class="m-part" data-part-box="${p.id}"><div class="m-part-head"><span class="m-part-label">${p.label})</span><div class="m-part-ask">${rich(p.ask)}</div><span class="qa-points">${p.points} P.</span></div>${tableHtml(p.table)}${plotsHtml(p, p.id)}<div data-answer="${p.id}">${answerHtml(p, p.id)}</div><div class="m-part-result" data-result="${p.id}"></div></section>`;
     function startExam(size) {
       leave();
-      exam = { data: E.buildTest(Math.floor(Math.random() * 2 ** 31), size), phase: 'write', started: Date.now(), seconds: 0, awarded: {}, results: {} };
+      exam = { data: E.buildTest(Math.floor(Math.random() * 2 ** 31), size, { focus: focusOn }), phase: 'write', started: Date.now(), seconds: 0, awarded: {}, results: {} };
       drawExam();
     }
     function drawExam() {
@@ -659,6 +665,7 @@
         case 'm-start': return startRound({ topic: btn.dataset.topic });
         case 'm-gen': return startRound({ gen: btn.dataset.gen });
         case 'm-mix': return guarded(() => startRound({}));
+        case 'm-focus': focusOn = !focusOn; try { localStorage.setItem(FOCUS_KEY, focusOn ? '1' : '0'); } catch {} return home();
         case 'm-formulas': return guarded(() => transition(formulas));
         case 'm-test': return guarded(() => transition(testSetup));
         case 'm-exam-start': return startExam(btn.dataset.size);

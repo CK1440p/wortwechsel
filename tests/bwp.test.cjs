@@ -86,8 +86,8 @@ test('generated cases follow the same formulas', () => {
   }
 });
 test('test simulation: every part solvable, points add up', () => {
-  for (const size of ['full', 'short', 'inv']) for (let seed = 1; seed <= 80; seed++) {
-    const t = B.buildTest(seed, size), parts = t.tasks.flatMap(x => x.parts);
+  for (const size of ['full', 'short', 'inv']) for (const focus of [true, false]) for (let seed = 1; seed <= 60; seed++) {
+    const t = B.buildTest(seed, size, { focus }), parts = t.tasks.flatMap(x => x.parts);
     assert.equal(t.points, parts.reduce((s, p) => s + p.points, 0));
     for (const p of parts) assert.equal(M.check(p, rightAnswer(p)).ok, true, `${size} ${seed} ${p.ask}`);
   }
@@ -118,7 +118,8 @@ test('BWP is its own subject with grouped topics, labs and formulas', () => {
   const a = app();
   a.click('[data-subject="BWP"]');
   assert.match(a.text(), /BWP\./); assert.equal(a.$('#nav-bwp').hidden, false); assert.equal(a.$('#nav-rw').hidden, true); assert.equal(a.$('#nav-qa').hidden, true);
-  assert.equal(a.document.querySelectorAll('.m-topic-grid .set-card').length, 10);
+  assert.equal(a.document.querySelectorAll('.m-topic-grid .set-card').length, 11);
+  assert.match(a.text(), /Risikopolitische Maßnahmen/); assert.match(a.text(), /Extra – kein SA-Stoff/);
   assert.match(a.text(), /Versicherungen/); assert.match(a.text(), /Investitionsrechnung/);
   for (const [topic, sel] of [['kfz', '.bwp-stairs'], ['leistung', '.bwp-ubars'], ['kosten', '.bwp-kchart'], ['renta', '.bwp-acols']]) {
     a.click('[data-action="m-home"]'); a.click(`[data-action="m-topic"][data-topic="${topic}"]`); assert.ok(a.$(sel), `${topic} lab`);
@@ -146,10 +147,40 @@ test('a cost comparison is filled in the Excel sheet and saved as progress', () 
 test('BWP test simulation can be submitted and graded', () => {
   const a = app();
   a.click('[data-subject="BWP"]'); a.click('[data-action="m-test"]');
-  assert.equal(a.document.querySelectorAll('[data-action="m-exam-start"]').length, 3);
+  assert.equal(a.document.querySelectorAll('[data-action="m-exam-start"]').length, 3); assert.match(a.text(), /Ganze SA/);
   a.click('[data-action="m-exam-start"][data-size="inv"]');
   assert.equal(a.document.querySelectorAll('.m-exam .qa-test-item').length, 3); assert.ok(a.document.querySelectorAll('.m-exam .xl').length >= 2);
   a.click('[data-action="m-exam-submit"]'); a.click('#confirm-action');
   assert.match(a.text(), /Korrektur/);
   a.click('[data-action="m-exam-finish"]'); assert.equal(a.data().bwp.test.runs, 1); assert.equal(a.data().rw.test.runs, 0);
+});
+
+test('SA focus: only school-test topics in mixing, progress and test, switchable', () => {
+  assert.deepEqual(B.SA_TOPICS, ['prinzip', 'risiko', 'sv', 'privat', 'invest', 'kosten', 'gewinn', 'renta']);
+  const progress = B.validateProgress({});
+  for (let i = 0; i < 50; i++) for (const id of B.planMix(progress, 8, Math.random, Date.now(), B.SA_TOPICS)) assert.ok(B.SA_TOPICS.includes(id), id);
+  const extraGens = ['vertrag', 'leistung', 'kfz'].flatMap(t => B.GENS.filter(g => g.topic === t).map(g => g.id));
+  for (let seed = 1; seed <= 40; seed++) for (const size of ['full', 'short', 'inv']) {
+    const titles = B.buildTest(seed, size).tasks.map(t => t.title).join(' ');
+    assert.doesNotMatch(titles, /Bonus-Malus|Versicherungsleistung/, `${size} ${seed}`);
+  }
+  assert.match(B.buildTest(1, 'full', { focus: false }).tasks.map(t => t.title).join(' '), /Bonus-Malus/);
+  assert.ok(extraGens.length > 10);
+  const store = new Map(), a = app(store);
+  a.click('[data-subject="BWP"]');
+  const sw = a.$('[data-action="m-focus"]'); assert.ok(sw); assert.equal(sw.getAttribute('aria-checked'), 'true'); assert.match(a.text(), /aus dem SA-Stoff/);
+  assert.ok(a.$('.m-off'), 'extra topics are dimmed');
+  a.click('[data-action="m-focus"]'); assert.equal(a.$('[data-action="m-focus"]').getAttribute('aria-checked'), 'false'); assert.equal(store.get('wortwechsel.focus.bwp'), '0'); assert.equal(a.$('.m-off'), null);
+  a.click('[data-action="m-focus"]'); assert.equal(store.get('wortwechsel.focus.bwp'), '1');
+  // A mixed round in SA mode never shows an extra topic.
+  a.click('[data-action="m-mix"]'); assert.ok(a.$('#m-card')); assert.doesNotMatch(a.$('.round-progress').textContent, /Vertrag und Schadensfall|Versicherungsleistung|Kfz und Bonus-Malus/);
+  // Other courses have no switch.
+  a.click('[data-subject="Mathe"]'); assert.equal(a.$('[data-action="m-focus"]'), null);
+});
+test('risk policy: the four measures are taught and checked', () => {
+  const seen = new Set();
+  for (let seed = 1; seed <= 200; seed++) { const t = B.makeTask('r-massnahme', 1, seed); seen.add(t.answer.options[t.answer.correct].text); }
+  assert.deepEqual([...seen].sort(), ['Risiko selbst tragen', 'Risiko vermeiden', 'Risiko vermindern', 'Risiko überwälzen']);
+  const insurance = [...Array(300).keys()].map(s => B.makeTask('r-massnahme', 1, s + 1)).find(t => /Feuerversicherung/.test(t.lead));
+  assert.ok(insurance); assert.equal(insurance.answer.options[insurance.answer.correct].text, 'Risiko überwälzen');
 });
