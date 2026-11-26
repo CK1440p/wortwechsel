@@ -67,6 +67,10 @@ test('formulas reproduce the book and the class quiz', () => {
   assert.equal(c.afa(80000, 10000, 5) + c.zins(80000, 10000, 8) + 12000 + 20000, 49600); assert.equal(c.afa(100000, 10000, 5) + c.zins(100000, 10000, 8) + 15000 + 16000, 53400);
   assert.equal(c.afa(24000, 4000, 5) + c.zins(24000, 4000, 8) + 3000 + 8000, 16120); assert.equal(c.afa(30000, 5000, 5) + c.zins(30000, 5000, 8) + 3500 + 6000, 15900);
   assert.equal(c.amort(150000, 0, 30000), 5);
+  // Farblaserdrucker (Rentabilität gegen externen Kopierer 0,83 € × 5.000): Gesamtkosten 3.491 / 3.776,50, Rentabilität 89,49 % / 70,53 %.
+  const tOki = c.afa(1360, 200, 5) + c.zins(1360, 200, 5) + 320 + 0.58 * 5000, tXer = c.afa(1040, 100, 5) + c.zins(1040, 100, 5) + 410 + 0.63 * 5000;
+  assert.equal(B.r2(tOki), 3491); assert.equal(B.r2(tXer), 3776.5);
+  assert.equal(B.r2(c.rent(0.83 * 5000 - tOki, c.zins(1360, 200, 5), c.kap(1360, 200))), 89.49); assert.equal(B.r2(c.rent(0.83 * 5000 - tXer, c.zins(1040, 100, 5), c.kap(1040, 100))), 70.53);
   // Entschädigung: 80.000 / 100.000 / 60.000 → 48.000; Über- und Vollversicherung zahlen den Schaden.
   assert.equal(c.entsch(80000, 100000, 60000), 48000); assert.equal(c.entsch(110000, 100000, 60000), 60000); assert.equal(c.entsch(30000, 25000, 7500), 7500);
   // Bonus-Malus: Stufe 10 = 120 % = 1.760 € → 100 % = 1.466,67; Stufe 2 (60 %) vierteljährlich 73,03 → nach Unfall Stufe 5 (70 %).
@@ -81,6 +85,13 @@ test('generated cases follow the same formulas', () => {
     const cmp = B.bmCompare(M.kit.makeRng(seed));
     assert.equal(cmp.self[0], Math.max(0, cmp.s - 1)); assert.equal(cmp.ins[0], Math.min(17, cmp.s + 3)); assert.equal(cmp.ins[1], Math.min(17, cmp.s + 3) - 1);
     const u = B.underCase(M.kit.makeRng(seed), 2); assert.ok(Math.abs(u.pay - B.calc.entsch(u.vs, u.vw, u.dmg)) < 1e-9);
+    for (const st of [2, 3]) {
+      const x = B.fremdCase(M.kit.makeRng(seed), st);
+      if (!x) continue;
+      assert.equal(x.A.nd, x.B.nd); assert.equal(x.A.q, x.B.q);
+      for (const X of [x.A, x.B]) { assert.ok(X.g > 0); assert.ok(Math.abs(X.g - (x.p * x.q - X.afa - X.zins - X.fix - X.v * x.q)) < 0.011); assert.ok(Math.abs(X.rent - B.calc.rent(X.g, X.zins, X.kap)) < 1e-9); assert.equal(X.zins, B.calc.zins(X.ak, X.rw, X.i)); assert.equal(X.afa, B.calc.afa(X.ak, X.rw, X.nd)); }
+      assert.equal(x.win, x.A.rent > x.B.rent ? x.o.a : x.o.b);
+    }
     const f = B.fullCase(M.kit.makeRng(seed));
     for (const X of [f.A, f.B]) { assert.ok(Math.abs(X.rent - B.calc.rent(X.g, X.zins, X.kap)) < 1e-9); assert.ok(Math.abs(X.am - B.calc.amort(X.ak, X.rw, X.g + X.afa)) < 1e-9); assert.ok(Math.abs(X.zins - B.calc.zins(X.ak, X.rw, X.i)) < 1e-9); }
   }

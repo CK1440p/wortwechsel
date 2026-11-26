@@ -857,6 +857,61 @@
     return { kicker: 'Fallstudie', lead: `Ein Betrieb ersetzt ${art(o, 'seinen alten')} ${o.what}. Beide Angebote erfüllen die technischen Anforderungen.`, ask: 'Berechne Gesamtkosten, Gewinn, Rentabilität und Amortisationsdauer beider Angebote.', answer,
       hints: ['Gesamtkosten = kalk. Abschreibung + kalk. Zinsen + fixe + variable Kosten.', 'Rentabilität = (Gewinn + Zinsen) · 100 : Ø Kapital. Amortisation = (AK − RW) : (Gewinn + AfA).'], solution: [sol(A), sol(B), `Höhere Rentabilität: **${c.win}**. Entscheiden sollte man trotzdem erst nach mehreren Kennzahlen und qualitativen Kriterien wie Service, Energieverbrauch oder Platzbedarf.`] };
   });
+  // Rentabilitätsvergleich gegen Fremdbezug (Buchtyp: eigenes Gerät statt externem Dienstleister). Gewinn = Fremdbezugskosten − eigene Gesamtkosten.
+  const FREMD = [
+    { what: 'Farblaserdrucker', firm: 'Eine Steuerberatungskanzlei', buy: 'einen eigenen Farblaserdrucker', a: 'Colorjet 610', b: 'Printline 85', one: 'Ausdruck', many: 'Ausdrucke', ext: 'Bisher lässt sie alles im Copyshop drucken', ak: [900, 2400], fix: [200, 600], v: [0.4, 0.7], gap: [0.12, 0.35], q: [4000, 8000] },
+    { what: 'Kaffeevollautomat', firm: 'Ein Büro mit 40 Beschäftigten', buy: 'einen eigenen Kaffeevollautomaten', a: 'Crema One', b: 'Barista X', one: 'Tasse', many: 'Tassen', ext: 'Bisher liefert ein Automatenaufsteller den Kaffee', ak: [3000, 9000], fix: [300, 900], v: [0.15, 0.35], gap: [0.25, 0.5], q: [6000, 14000] },
+    { what: 'Großwaschmaschine', firm: 'Ein Hotel', buy: 'eine eigene Großwaschmaschine', a: 'Cleanline', b: 'Waschkraft', one: 'Wäscheteil', many: 'Wäscheteile', ext: 'Bisher wäscht eine externe Wäscherei', ak: [12000, 30000], fix: [800, 2500], v: [0.3, 0.7], gap: [0.4, 0.9], q: [12000, 25000] },
+    { what: '3D-Drucker', firm: 'Ein Technikbüro', buy: 'einen eigenen 3D-Drucker', a: 'Layerpro', b: 'Printform', one: 'Bauteil', many: 'Bauteile', ext: 'Bisher lässt es die Bauteile bei einem Dienstleister drucken', ak: [8000, 24000], fix: [600, 2000], v: [1.5, 3.5], gap: [1.5, 3], q: [2000, 5000] },
+  ];
+  // Both offers share ND, Zinssatz and quantity like in the book; st 3 sometimes makes the cheaper offer lose on Rentabilität.
+  function fremdCase(r, st = 2) {
+    const twist = st === 3 && r.chance(0.5);
+    for (let tries = 0; tries < 120; tries++) {
+      const o = r.pick(FREMD), nd = r.pick([4, 5, 6, 8]), i = r.pick([3, 4, 5, 6, 8]), q = round(r.int(o.q[0], o.q[1]), 100);
+      const one = () => { const afa = round(r.int(o.ak[0], o.ak[1]) / nd, 10), rw = r.chance(0.6) ? round(afa * nd * r.pick([0.05, 0.1, 0.15, 0.2]), 10) : 0; return { ak: afa * nd + rw, rw, nd, i, afa, kap: (afa * nd + 2 * rw) / 2 }; };
+      const A = one(), B = one();
+      A.v = r.range(o.v, 2); B.v = r2(A.v * r.pick([0.85, 0.9, 0.93, 1.07, 1.1, 1.15]));
+      A.fix = round(r.int(o.fix[0], o.fix[1]), 10); B.fix = round(r.int(o.fix[0], o.fix[1]), 10);
+      const p = r2(Math.max(A.v, B.v) + r.range(o.gap, 2)), ext = r2(p * q);
+      for (const X of [A, B]) { X.q = q; X.zins = X.kap * i / 100; X.run = r2(X.fix + X.v * q); X.total = r2(X.zins + X.afa + X.run); X.g = r2(ext - X.total); X.rent = (X.g + X.zins) * 100 / X.kap; X.am = (X.ak - X.rw) / (X.g + X.afa); }
+      if (A.g <= 0 || B.g <= 0 || Math.abs(A.rent - B.rent) < 1 || Math.abs(A.g - B.g) < 20 || Math.max(A.rent, B.rent) > 250) continue;
+      const cheap = A.total < B.total ? 'A' : 'B', best = A.rent > B.rent ? 'A' : 'B';
+      if (twist && cheap === best) continue;
+      return { o, A, B, p, q, ext, i, twist: cheap !== best, cheap: cheap === 'A' ? o.a : o.b, win: best === 'A' ? o.a : o.b };
+    }
+    return null;
+  }
+  gen('ra-fremd', 'renta', 'Rentabilitätsvergleich wie in Excel', 2, 3, 4, (r, st) => {
+    const c = M.kit.repeat(() => fremdCase(r, st)), { o, A, B, p, q } = c, amort = st === 3;
+    const data = dataRows(A, B, [['Anschaffungskosten in EUR', x => eur(x.ak)], ['Nutzungsdauer in Jahren', x => String(x.nd)], [`Restwert nach ${A.nd} Jahren in EUR`, x => eur(x.rw)], [`Kosten je ${o.one} in EUR`, x => eur(x.v)], ['Fixe Betriebskosten p. a. in EUR', x => eur(x.fix)], ['Zinssatz p. a.', x => `${x.i} %`], [`Anzahl ${o.many} p. a.`, x => int(x.q)]]);
+    const nm = X => X === A ? o.a : o.b;
+    const runTraps = X => [{ value: X.fix + X.v, msg: `Die Kosten je ${o.one} mit der Anzahl multiplizieren.` }, { value: X.v * X.q, msg: 'Die fixen Betriebskosten kommen noch dazu.' }];
+    const totTraps = X => [{ value: X.total - X.zins, msg: 'Die kalk. Zinsen gehören zu den Gesamtkosten.' }, { value: X.total - X.afa, msg: 'Die kalk. Abschreibung gehört zu den Gesamtkosten.' }, { value: X.ak + X.run, msg: 'Nicht die Anschaffungskosten addieren: Gesamtkosten = Zinsen + Abschreibung + Betriebskosten.' }];
+    const gTraps = X => [{ value: c.ext - X.run, msg: 'Zinsen und Abschreibung sind auch Kosten: Fremdbezug − **Gesamtkosten**.' }, { value: X.total - c.ext, msg: 'Umgekehrt: Kosten bei Fremdbezug − eigene Gesamtkosten.' }, { value: c.ext - X.total - X.ak, msg: 'Die Anschaffungskosten stecken schon in der Abschreibung.' }];
+    const kTraps = X => [{ value: X.ak, msg: 'Durchschnittlich: (AK + RW) : 2.' }, { value: (X.ak - X.rw) / 2, msg: 'Der Restwert wird addiert: (AK + RW) : 2.' }];
+    const rTraps = X => [{ value: X.g * 100 / X.kap, msg: 'Das wäre die vereinfachte Formel. Laut Buch kommen die kalk. Zinsen zum Gewinn dazu: (Gewinn + Zinsen) · 100 : Ø Kapital.' }, { value: (X.g + X.zins) * 100 / X.ak, msg: 'Durch den **durchschnittlichen** Kapitaleinsatz dividieren, nicht durch die Anschaffungskosten.' }, { value: X.kap / (X.g + X.zins), msg: 'Der Bruch steht verkehrt.' }];
+    const mTraps = X => [{ value: (X.ak - X.rw) / X.g, msg: 'Die Abschreibung fließt auch zurück: Nenner = Gewinn + Abschreibung.' }, { value: X.ak / (X.g + X.afa), msg: 'Im Zähler steht AK − RW.' }];
+    const answer = fields(
+      money('zA', `Kalk. Zinsen ${o.a}`, A.zins, zinsTraps(A)), money('zB', `Kalk. Zinsen ${o.b}`, B.zins, zinsTraps(B)),
+      money('aA', `Kalk. Abschreibung ${o.a}`, A.afa, afaTraps(A)), money('aB', `Kalk. Abschreibung ${o.b}`, B.afa, afaTraps(B)),
+      money('rA', `Betriebskosten ${o.a}`, A.run, runTraps(A)), money('rB', `Betriebskosten ${o.b}`, B.run, runTraps(B)),
+      money('tA', `Gesamtkosten ${o.a}`, A.total, totTraps(A), { tol: 0.03 }), money('tB', `Gesamtkosten ${o.b}`, B.total, totTraps(B), { tol: 0.03 }),
+      money('f', 'Kosten bei Fremdbezug', c.ext, [{ value: p, msg: `Preis je ${o.one} mal Anzahl.` }]),
+      money('gA', `Gewinn ${o.a}`, A.g, gTraps(A), { tol: 0.03 }), money('gB', `Gewinn ${o.b}`, B.g, gTraps(B), { tol: 0.03 }),
+      money('kA', `Ø Kapitaleinsatz ${o.a}`, A.kap, kTraps(A)), money('kB', `Ø Kapitaleinsatz ${o.b}`, B.kap, kTraps(B)),
+      num('pA', `Rentabilität ${o.a}`, A.rent, { unit: '%', traps: rTraps(A) }), num('pB', `Rentabilität ${o.b}`, B.rent, { unit: '%', traps: rTraps(B) }),
+      ...(amort ? [num('mA', `Amortisation ${o.a}`, A.am, { unit: 'Jahre', traps: mTraps(A) }), num('mB', `Amortisation ${o.b}`, B.am, { unit: 'Jahre', traps: mTraps(B) })] : []),
+      selSame('w', 'Entscheidung für', [o.a, o.b], c.win));
+    answer.grid = { title: `Rentabilitätsvergleichsrechnung ${o.what}`, head: ['Vergleichsdaten', o.a, o.b], rows: [...data,
+      { label: 'Kostenvergleich in EUR', head: true, cells: [o.a, o.b] }, { label: 'Kalk. Zinsen', cells: [{ k: 'zA' }, { k: 'zB' }] }, { label: 'Kalk. Abschreibung', cells: [{ k: 'aA' }, { k: 'aB' }] }, { label: 'Laufende Betriebskosten', cells: [{ k: 'rA' }, { k: 'rB' }] }, { label: 'Gesamtkosten', total: true, cells: [{ k: 'tA' }, { k: 'tB' }] },
+      { label: 'Rentabilitäts­vergleich', head: true, cells: [o.a, o.b] }, { label: `Kosten bei Fremdbezug (${eur(p)} € je ${o.one})`, cells: [{ k: 'f', span: 2 }] }, { label: 'Gewinn (Ersparnis)', cells: [{ k: 'gA' }, { k: 'gB' }] }, { label: 'Ø Kapitaleinsatz', cells: [{ k: 'kA' }, { k: 'kB' }] }, { label: 'Rentabilität in %', total: true, cells: [{ k: 'pA' }, { k: 'pB' }] },
+      ...(amort ? [{ label: 'Amortisationsdauer in Jahren', total: true, cells: [{ k: 'mA' }, { k: 'mB' }] }] : []), { label: 'Entscheidung für', cells: [{ k: 'w', span: 2 }] }] };
+    const sol = X => `**${nm(X)}**: Zinsen ${zinsTex(X)}; Abschreibung ${afaTex(X)}; Betriebskosten ${E(X.fix)} + ${eur(X.v)} · ${int(q)} = ${E(X.run)}; Gesamtkosten ${E(X.total)}; Gewinn ${E(c.ext)} − ${E(X.total)} = ${E(X.g)}; Rentabilität (${E(X.g)} + ${E(X.zins)}) · 100 : ${E(X.kap)} = ${dec(X.rent)} %${amort ? `; Amortisation (${E(X.ak)} − ${E(X.rw)}) : (${E(X.g)} + ${E(X.afa)}) = ${dec(X.am)} Jahre` : ''}`;
+    return { kicker: 'Rentabilitätsvergleich', lead: `${o.firm} möchte ${o.buy} kaufen. Zwei Angebote stehen zur Wahl: ${o.a} und ${o.b}. ${o.ext}, das kostet ${eur(p)} € je ${o.one}.`, ask: `Vergleiche die Rentabilitäten${amort ? ' und Amortisationsdauern' : ''} und entscheide dich für eine der beiden Alternativen.`, answer,
+      hints: ['Zuerst die Kostenvergleichsrechnung: Gesamtkosten = kalk. Zinsen + kalk. Abschreibung + fixe + variable Betriebskosten.', `Gewinn = was man sich gegenüber dem Fremdbezug erspart: ${eur(p)} € · ${int(q)} − eigene Gesamtkosten.`, 'Rentabilität = (Gewinn + kalk. Zinsen) · 100 : Ø Kapitaleinsatz, Ø Kapital = (AK + RW) : 2.'],
+      solution: [`Kosten bei Fremdbezug = ${eur(p)} € · ${int(q)} = ${E(c.ext)}`, sol(A), sol(B), `Entscheidung für **${c.win}** (höhere Rentabilität)${c.twist ? `, obwohl ${c.cheap} die niedrigeren Gesamtkosten hat: ${c.win} bindet weniger Kapital` : ''}.`] };
+  });
   const RA_MC = [
     ['Eine Investition hat eine Rentabilität von 14 %. Was bedeutet das?', 'Das durchschnittlich eingesetzte Kapital verzinst sich mit 14 % pro Jahr', ['14 % des Umsatzes sind Gewinn', 'Die Investition amortisiert sich nach 14 Jahren', 'Die Kosten betragen 14 % der Anschaffungskosten']],
     ['Investition A amortisiert sich nach 3 Jahren, B nach 5 Jahren. Was stimmt?', 'A hat die kürzere Rückflussdauer, andere Kriterien müssen aber auch geprüft werden', ['A ist in jeder Hinsicht besser', 'B bringt automatisch den höheren Gewinn', 'B ist grundsätzlich risikoärmer']],
@@ -886,8 +941,8 @@
     return { title: g.title, lead: `${t.lead} ${t.ask}`, parts: [{ points: 8, ask: 'Fülle die Kostenvergleichsrechnung aus.', answer: t.answer, solution: t.solution }] };
   }
   function testGewinnRenta(r) {
-    const t = mk(r, 'ra-voll');
-    return { title: 'Fallstudie Investitionsrechnung', lead: t.lead, parts: [{ points: 9, ask: t.ask, answer: t.answer, solution: t.solution }] };
+    const fremd = r.chance(0.5), t = fremd ? mk(r, 'ra-fremd', r.chance(0.5) ? 2 : 3) : mk(r, 'ra-voll');
+    return { title: fremd ? t.answer.grid.title : 'Fallstudie Investitionsrechnung', lead: t.lead, parts: [{ points: 9, ask: t.ask, answer: t.answer, solution: t.solution }] };
   }
   function testRenta(r) { const a = mk(r, 'ra-renta'), b = mk(r, 'ra-amort'), c = mk(r, 'ra-ersparnis', 2); return { title: 'Rentabilität und Amortisation', lead: '', parts: [part(a, 3), part(b, 3), part(c, 2)] }; }
   function testVersicherungen(r) {
@@ -913,5 +968,5 @@
     rent: (g, z, kap) => (g + z) * 100 / kap, amort: (ak, rw, back) => (ak - rw) / back, crit: (f1, f2, v1, v2) => Math.abs(f2 - f1) / Math.abs(v1 - v2),
     entsch: (vs, vw, dmg) => vs < vw ? vs * dmg / vw : dmg, bm: (prem, from, to) => prem / BM[from] * BM[to],
   };
-  return { ...E_, buildTest, SA_TOPICS, BM, eur, r2, calc, critCase, costCase, profitCase, fullCase, bmCompare, underCase };
+  return { ...E_, buildTest, SA_TOPICS, BM, eur, r2, calc, critCase, costCase, profitCase, fullCase, fremdCase, bmCompare, underCase };
 });
