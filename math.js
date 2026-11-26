@@ -125,7 +125,7 @@
       if (r.head) return `<tr class="xl-head">${num()}<td>${esc(r.label)}</td>${r.cells.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`;
       return `<tr class="${r.data ? 'xl-data' : r.total ? 'xl-total' : r.sub ? 'xl-sub' : 'xl-calc'}">${num()}<td class="xl-label">${rich(r.label)}</td>${r.cells.map(cell).join('')}</tr>`;
     }).join('');
-    return `<div class="xl-wrap"><table class="xl"><thead><tr><th class="xl-corner"></th>${g.head.map((_, i) => `<th>${letters[i]}</th>`).join('')}</tr></thead><tbody><tr class="xl-title"><th class="xl-n" scope="row">1</th><td colspan="${cols + 1}">${esc(g.title)}</td></tr>${headRow}${rows}</tbody></table></div>`;
+    return `<div class="xl-wrap"><table class="xl${g.wide ? ' xl-wide' : ''}"><thead><tr><th class="xl-corner"></th>${g.head.map((_, i) => `<th>${letters[i]}</th>`).join('')}</tr></thead><tbody><tr class="xl-title"><th class="xl-n" scope="row">1</th><td colspan="${cols + 1}">${esc(g.title)}</td></tr>${headRow}${rows}</tbody></table></div>`;
   }
   const svgPos = (svg, e) => { const r = svg.getBoundingClientRect(), W = Number(svg.dataset.w), H = Number(svg.dataset.h); return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height }; };
   function onDrag(svg, handle, end) {

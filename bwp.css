@@ -121,6 +121,12 @@
   .xl td.xl-in{min-width:0;padding:4px 3px}
   .xl-data td.xl-label,.xl-calc td.xl-label,.xl-total td.xl-label,.xl-sub td.xl-label{min-width:0}
   .xl-title td{font-size:13px}
+  /* Wide sheets (Scoring: 6 columns) keep readable cells and scroll sideways inside .xl-wrap. */
+  .xl.xl-wide{width:490px}
+  .xl.xl-wide thead th:nth-child(2){width:128px}
+  .xl.xl-wide thead th:nth-child(3){width:78px}
+  .xl.xl-wide thead th:nth-child(4),.xl.xl-wide thead th:nth-child(6){width:50px}
+  .xl.xl-wide thead th:nth-child(5),.xl.xl-wide thead th:nth-child(7){width:84px}
   .xl .m-input{min-height:36px;padding:0 6px;border-radius:8px}
   .xl .m-input input{font-size:16px}
   .xl .m-input select{font-size:16px}
