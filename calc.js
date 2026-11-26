@@ -76,10 +76,12 @@
   // ---- Fenster ----
   const KEY = 'wortwechsel.calc';
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } };
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ open: !panel.hidden, pos, tape: tape.slice(0, 8) })); } catch {} };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ open: !panel.hidden, pos, dock: docked, tape: tape.slice(0, 8) })); } catch {} };
   const saved = load();
   let pos = saved.pos && Number.isFinite(saved.pos.x) && Number.isFinite(saved.pos.y) ? saved.pos : null;
   let tape = Array.isArray(saved.tape) ? saved.tape.filter(x => x && typeof x.e === 'string' && Number.isFinite(x.v)).slice(0, 8) : [];
+  // Docked: a fixed column on the right and the page moves aside. Undocked: a window you can drag around.
+  let docked = saved.dock !== false;
   let fresh = false, field = null;
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const svg = d => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -100,7 +102,7 @@
 
   const panel = document.createElement('section');
   panel.id = 'calc'; panel.className = 'calc'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Taschenrechner');
-  panel.innerHTML = `<header class="calc-head"><span class="calc-grip" aria-hidden="true"></span><strong>Rechner</strong><button type="button" class="calc-x" data-c="close" aria-label="Rechner schließen" title="Schließen (Esc)">${svg('<path d="M6 6l12 12M18 6 6 18"/>')}</button></header>
+  panel.innerHTML = `<header class="calc-head"><span class="calc-grip" aria-hidden="true"></span><strong>Rechner</strong><button type="button" class="calc-x calc-dock" data-c="dock"></button><button type="button" class="calc-x" data-c="close" aria-label="Rechner schließen" title="Schließen (Esc)">${svg('<path d="M6 6l12 12M18 6 6 18"/>')}</button></header>
     <ol class="calc-tape" aria-label="Letzte Rechnungen"></ol>
     <div class="calc-screen"><input id="calc-expr" class="calc-expr" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-label="Rechnung" placeholder="0"><output class="calc-out" id="calc-out" for="calc-expr" aria-live="polite"></output></div>
     <div class="calc-chips">${CHIPS.map(([t, , title], k) => `<button type="button" data-c="chip" data-k="${k}" title="${esc(title)}">${esc(t)}</button>`).join('')}</div>
@@ -160,7 +162,21 @@
     field.classList.add('calc-filled'); setTimeout(() => field?.classList.remove('calc-filled'), 900);
     input.value = format(v); fresh = true; preview();
   }
+  const DOCK_ICON = svg('<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/>'), FLOAT_ICON = svg('<rect x="3.5" y="8.5" width="11" height="11" rx="2"/><path d="M10 4.5h7.5a2 2 0 0 1 2 2V14"/>');
+  const canDock = () => window.innerWidth >= 980;
+  // Applies docked or floating and tells the page how much room to make.
+  function layout() {
+    const d = docked && canDock() && !panel.hidden, dockBtn = panel.querySelector('.calc-dock');
+    panel.classList.toggle('docked', d); document.body.classList.toggle('calc-docked', d);
+    dockBtn.hidden = !canDock(); dockBtn.innerHTML = d ? FLOAT_ICON : DOCK_ICON;
+    const label = d ? 'Rechner lösen und frei verschieben' : 'Rechner rechts andocken';
+    dockBtn.setAttribute('aria-label', label); dockBtn.title = label;
+    if (d) { panel.style.left = panel.style.top = ''; panel.classList.remove('moved'); } else place();
+    // Phones: leave room under the page so the task can scroll above the calculator sheet.
+    document.body.style.setProperty('--calc-h', !panel.hidden && window.innerWidth <= 540 ? `${panel.offsetHeight || 0}px` : '0px');
+  }
   function place() {
+    if (panel.classList.contains('docked')) return;
     if (!pos || window.innerWidth <= 540) { panel.style.left = panel.style.top = ''; panel.classList.remove('moved'); return; }
     const w = panel.offsetWidth || 300, h = panel.offsetHeight || 460;
     pos = { x: Math.min(Math.max(8, pos.x), window.innerWidth - w - 8), y: Math.min(Math.max(8, pos.y), window.innerHeight - h - 8) };
@@ -168,7 +184,8 @@
   }
   function setOpen(open, focus = true) {
     panel.hidden = !open; toggle.setAttribute('aria-pressed', String(open)); toggle.classList.toggle('on', open); fab.hidden = open;
-    if (open) { place(); preview(); if (focus && !coarse) input.focus(); }
+    layout();
+    if (open) { preview(); if (focus && !coarse) input.focus(); }
     else if (panel.contains(document.activeElement)) toggle.focus();
     save();
   }
@@ -179,6 +196,7 @@
     const b = e.target.closest('[data-c]'); if (!b) return;
     const c = b.dataset.c;
     if (c === 'close') return setOpen(false);
+    if (c === 'dock') { if (docked && canDock()) { const r = panel.getBoundingClientRect(); docked = false; pos = pos || { x: r.left - 24, y: Math.max(16, r.top + 64) }; } else docked = true; layout(); return save(); }
     if (c === 'key') return insert(b.dataset.v);
     if (c === 'clear') { input.value = ''; fresh = false; return preview(); }
     if (c === 'back') { fresh = false; const a = input.selectionStart ?? input.value.length, z = input.selectionEnd ?? a; if (document.activeElement === input && a !== z) input.value = input.value.slice(0, a) + input.value.slice(z); else input.value = input.value.slice(0, -1); return preview(); }
@@ -210,14 +228,16 @@
   head.addEventListener('pointerdown', e => {
     if (e.target.closest('button') || window.innerWidth <= 540) return;
     const r = panel.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    // Dragging the docked calculator pulls it out into a floating window under the pointer.
+    if (panel.classList.contains('docked')) { docked = false; pos = { x: r.left, y: r.top }; layout(); }
     try { head.setPointerCapture(e.pointerId); } catch {} panel.classList.add('dragging');
     const move = ev => { pos = { x: ev.clientX - dx, y: ev.clientY - dy }; place(); };
     const up = () => { panel.classList.remove('dragging'); head.removeEventListener('pointermove', move); head.removeEventListener('pointerup', up); head.removeEventListener('pointercancel', up); save(); };
     head.addEventListener('pointermove', move); head.addEventListener('pointerup', up); head.addEventListener('pointercancel', up);
   });
-  head.addEventListener('dblclick', () => { pos = null; place(); save(); });
-  window.addEventListener('resize', () => { if (!panel.hidden) place(); });
+  head.addEventListener('dblclick', e => { if (e.target.closest('button')) return; if (canDock()) docked = !docked; else pos = null; layout(); save(); });
+  window.addEventListener('resize', () => { if (!panel.hidden) layout(); });
 
-  drawTape(); preview();
+  drawTape(); preview(); layout();
   if (saved.open) setOpen(true, false);
 })();
